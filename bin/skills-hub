@@ -246,6 +246,7 @@ const DEFAULT_AGENTS = [
     { name: 'Clawdbot', globalPath: path.join(os.homedir(), '.clawdbot/skills'), projectPath: 'skills', enabled: false, isCustom: false },
     { name: 'Droid', globalPath: path.join(os.homedir(), '.factory/skills'), projectPath: '.factory/skills', enabled: false, isCustom: false },
     { name: 'Windsurf', globalPath: path.join(os.homedir(), '.codeium/windsurf/skills'), projectPath: '.windsurf/skills', enabled: false, isCustom: false },
+    { name: 'Trae', globalPath: path.join(os.homedir(), '.trae/skills'), projectPath: '.trae/skills', enabled: false, isCustom: false },
     { name: 'Qoder', globalPath: path.join(os.homedir(), '.qoder/skills'), projectPath: '.qoder/skills', enabled: false, isCustom: false },
 ];
 

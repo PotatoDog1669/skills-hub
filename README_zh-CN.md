@@ -21,6 +21,20 @@
 | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Skills Hub Web UI** 是你的 AI 技能本地控制中心。它允许你**可视化地浏览和检查**技能库，**直接从 GitHub 导入**新功能，并一键**同步**到你喜爱的编码 Agent（如 Antigravity, Claude, Cursor）——确保你的 Agent 始终拥有最新的工具，而无需离开本地环境，也无需依赖云端账户。 |
 
+## 支持的 Agent
+
+Skills Hub 支持同步到多种主流 AI 编码助手：
+
+- **Antigravity** (`.agent/skills`)
+- **Claude Code** (`.claude/skills`)
+- **Cursor** (`.cursor/skills`)
+- **Trae** (`.trae/skills`)
+- **Windsurf** (`.windsurf/skills`)
+- **OpenCode** (`.opencode/skill`)
+- **Roo Code** (`.roo/skills`)
+- **Goose** (`.goose/skills`)
+- **更多...** (Qoder, Codex, Amp, Kilo Code, Gemini CLI, etc.)
+
 ## 快速开始
 
 ### 前提条件

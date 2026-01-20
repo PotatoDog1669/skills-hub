@@ -19,6 +19,20 @@
 | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Skills Hub Web UI** is your local control center for AI skills. It allows you to **visually discover and inspect** your skill library, **import new capabilities** directly from GitHub repositories, and **synchronize** them to your favorite coding agents (Antigravity, Claude, Cursor) with a single click—ensuring your agents always have the latest tools without leaving your local environment. |
 
+## Supported Agents
+
+Skills Hub supports synchronization with a wide range of AI agents:
+
+- **Antigravity** (`.agent/skills`)
+- **Claude Code** (`.claude/skills`)
+- **Cursor** (`.cursor/skills`)
+- **Trae** (`.trae/skills`)
+- **Windsurf** (`.windsurf/skills`)
+- **OpenCode** (`.opencode/skill`)
+- **Roo Code** (`.roo/skills`)
+- **Goose** (`.goose/skills`)
+- **And more...** (Qoder, Codex, Amp, Kilo Code, Gemini CLI, etc.)
+
 ## Getting Started
 
 ### Prerequisites
