@@ -1,6 +1,6 @@
 {
   "name": "@potatodog1669/skills-hub",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Centralized management tool for AI Agent Skills across Antigravity, Claude, Cursor, and more",
   "keywords": [
     "skills",
