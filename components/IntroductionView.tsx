@@ -68,6 +68,21 @@ const content = {
         outside your scan roots.
       </>
     ),
+    marketTitle: 'Skills Market',
+    marketText: (
+      <>
+        Discover a wide range of community-contributed skills at the{' '}
+        <a
+          href="https://skillsmp.com/zh"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="custom-text-orange font-bold hover:underline"
+        >
+          Skills Market
+        </a>
+        . You can copy skill URLs from there to import into Skills Hub.
+      </>
+    ),
   },
   zh: {
     title: 'Skills Hub 使用指南',
@@ -127,6 +142,21 @@ const content = {
         <strong>手动导入:</strong> 如果项目不在扫描路径下，您也可以手动添加项目路径.
       </>
     ),
+    marketTitle: '技能市场',
+    marketText: (
+      <>
+        在{' '}
+        <a
+          href="https://skillsmp.com/zh"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="custom-text-orange font-bold hover:underline"
+        >
+          Skills Market
+        </a>{' '}
+        发现更多社区贡献的技能。您可以复制技能 URL 并导入到 Skills Hub。
+      </>
+    ),
   },
 }
 
@@ -177,6 +207,9 @@ export function IntroductionView() {
 
         <h3>{t.importTitle}</h3>
         <p>{t.importText}</p>
+
+        <h3>{t.marketTitle}</h3>
+        <p>{t.marketText}</p>
 
         <h3>{t.syncTitle}</h3>
         <p>{t.syncText}</p>
