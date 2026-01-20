@@ -4,7 +4,8 @@
     position: fixed;
     left: 0;
     top: 0;
-    background: #f8fafc;
+    background: #fafaf9;
+    /* Stone 50 - Warmer */
     /* Lighter background for sidebar */
     border-right: 1px solid var(--border);
     padding: 1.5rem 1rem;
@@ -12,6 +13,8 @@
     flex-direction: column;
     overflow-y: auto;
 }
+
+
 
 .title {
     font-size: 1.1rem;
@@ -89,7 +92,8 @@
 
 .navItem:hover,
 .navItem.active {
-    background: #e2e8f0;
+    background: #e7e5e4;
+    /* Stone 200 */
 }
 
 /* Specific fix for project items to handle long text and icons */

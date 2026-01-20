@@ -1,0 +1,458 @@
+#!/usr/bin/env node
+'use strict';
+
+const fs = require('fs');
+const fsPromises = require('fs/promises');
+const fse = require('fs-extra');
+const path = require('path');
+const http = require('http');
+const os = require('os');
+const simpleGit = require('simple-git');
+const { spawn } = require('child_process');
+
+const args = process.argv.slice(2);
+const commands = new Set(['import', 'list', 'sync']);
+
+const commandIndex = args.findIndex((arg) => !arg.startsWith('-'));
+const command = commandIndex >= 0 ? args[commandIndex] : null;
+
+if (args.includes('--help') || args.includes('-h')) {
+    printHelp();
+    process.exit(0);
+}
+
+if (command && !commands.has(command)) {
+    console.error(`Unknown command: ${command}`);
+    printHelp();
+    process.exit(1);
+}
+
+if (command) {
+    const commandArgs = args.slice(commandIndex + 1);
+    runCommand(command, commandArgs).catch((error) => {
+        console.error(`Command failed: ${error.message || error}`);
+        process.exit(1);
+    });
+} else {
+    startServer(args);
+}
+
+function printHelp() {
+    console.log(`Usage:
+  skills-hub [options]
+  skills-hub <command> [options]
+
+Commands:
+  import <url> [--branch <branch>]   Import a skill from a git repository
+  list                               List skills in the hub directory
+  sync --all | --target <name>       Sync hub skills to agent targets
+
+Server options:
+  -p, --port <port>   Port to run the server (default: 3000)
+  -H, --host <host>   Host to bind (default: 127.0.0.1)
+  --no-open           Do not open the browser automatically
+  -h, --help          Show this help message
+`);
+}
+
+function readArgValue(argv, flag, shortFlag) {
+    const index = argv.indexOf(flag);
+    if (index !== -1 && index + 1 < argv.length) {
+        return argv[index + 1];
+    }
+
+    if (shortFlag) {
+        const shortIndex = argv.indexOf(shortFlag);
+        if (shortIndex !== -1 && shortIndex + 1 < argv.length) {
+            return argv[shortIndex + 1];
+        }
+    }
+
+    const withEq = argv.find((arg) => arg.startsWith(`${flag}=`));
+    if (withEq) {
+        return withEq.split('=').slice(1).join('=');
+    }
+
+    return null;
+}
+
+function expandHome(inputPath) {
+    if (!inputPath) return inputPath;
+    if (inputPath.startsWith('~')) {
+        return path.join(os.homedir(), inputPath.slice(1));
+    }
+    return inputPath;
+}
+
+async function runCommand(commandName, commandArgs) {
+    switch (commandName) {
+        case 'import':
+            await handleImport(commandArgs);
+            return;
+        case 'list':
+            await handleList();
+            return;
+        case 'sync':
+            await handleSync(commandArgs);
+            return;
+        default:
+            console.error(`Unknown command: ${commandName}`);
+            process.exit(1);
+    }
+}
+
+async function handleList() {
+    const config = await loadConfig();
+    const hubPath = expandHome(config.hubPath);
+
+    console.log(`Listing skills in ${hubPath}:`);
+    if (!await fse.pathExists(hubPath)) {
+        console.log('  (Hub directory does not exist yet)');
+        return;
+    }
+
+    const items = await fsPromises.readdir(hubPath);
+    for (const item of items) {
+        const fullPath = path.join(hubPath, item);
+        const stat = await fse.stat(fullPath);
+        if (stat.isDirectory()) {
+            console.log(`  - ${item}`);
+        }
+    }
+}
+
+async function handleSync(commandArgs) {
+    const targetName = readArgValue(commandArgs, '--target', '-t');
+    const allTargets = commandArgs.includes('--all');
+
+    if (!targetName && !allTargets) {
+        console.error('Error: specify --target <name> or --all');
+        process.exit(1);
+    }
+
+    const config = await loadConfig();
+    const hubPath = expandHome(config.hubPath);
+
+    if (!await fse.pathExists(hubPath)) {
+        console.log('Hub directory empty, nothing to sync.');
+        return;
+    }
+
+    let targetAgents = [];
+    if (allTargets) {
+        targetAgents = config.agents.filter((agent) => agent.enabled);
+    } else {
+        const normalized = targetName.toLowerCase();
+        targetAgents = config.agents.filter((agent) => agent.name.toLowerCase().includes(normalized));
+    }
+
+    if (targetAgents.length === 0) {
+        console.error('No matching agents found to sync to.');
+        return;
+    }
+
+    const skills = await fsPromises.readdir(hubPath);
+    console.log(`Found ${skills.length} skills in Hub. Syncing to ${targetAgents.length} agents...`);
+
+    for (const agent of targetAgents) {
+        const destRoot = expandHome(agent.globalPath);
+        console.log(`\nSyncing to Agent: ${agent.name} (${destRoot})...`);
+        await fse.ensureDir(destRoot);
+
+        for (const skill of skills) {
+            const skillSource = path.join(hubPath, skill);
+            const stat = await fse.stat(skillSource);
+            if (!stat.isDirectory()) continue;
+
+            const skillDest = path.join(destRoot, skill);
+
+            try {
+                await fse.copy(skillSource, skillDest, { overwrite: true });
+                console.log(`  [OK] ${skill} -> ${skillDest}`);
+            } catch (error) {
+                console.error(`  [ERR] Failed to sync ${skill}:`, error);
+            }
+        }
+    }
+
+    console.log('\nSync complete.');
+}
+
+async function handleImport(commandArgs) {
+    const branchArg = readArgValue(commandArgs, '--branch', '-b');
+    const url = commandArgs.find((arg) => !arg.startsWith('-'));
+
+    if (!url) {
+        console.error('Error: Missing URL for import.');
+        console.log('Usage: skills-hub import <url> [--branch <branch>]');
+        process.exit(1);
+    }
+
+    let repoUrl = '';
+    let subdir = '';
+    let skillName = '';
+    let branch = branchArg || undefined;
+
+    if (url.includes('tree/')) {
+        const parts = url.split('tree/');
+        const base = parts[0];
+        const rest = parts[1];
+        const slashIndex = rest.indexOf('/');
+
+        if (slashIndex === -1) {
+            repoUrl = base.replace(/\/$/, '') + '.git';
+            branch = branch || rest;
+        } else {
+            repoUrl = base.replace(/\/$/, '') + '.git';
+            branch = branch || rest.substring(0, slashIndex);
+            subdir = rest.substring(slashIndex + 1);
+        }
+    } else {
+        repoUrl = url.endsWith('.git') ? url : url + '.git';
+    }
+
+    skillName = subdir ? path.basename(subdir) : path.basename(repoUrl, '.git');
+    const config = await loadConfig();
+    const hubPath = expandHome(config.hubPath);
+    const destPath = path.join(hubPath, skillName);
+
+    console.log(`  Repo: ${repoUrl}`);
+    console.log(`  Subdir: ${subdir || '(root)'}`);
+    console.log(`  Target: ${destPath}`);
+
+    if (await fse.pathExists(destPath)) {
+        console.error(`Error: Skill '${skillName}' already exists at ${destPath}`);
+        process.exit(1);
+    }
+
+    await downloadRemoteSkill(repoUrl, subdir, destPath, branch);
+    console.log(`Successfully imported ${skillName}!`);
+}
+
+const CONFIG_PATH = path.join(os.homedir(), '.skills-hub', 'config.json');
+
+const DEFAULT_AGENTS = [
+    { name: 'Antigravity', globalPath: path.join(os.homedir(), '.gemini/antigravity/skills'), projectPath: '.agent/skills', enabled: true, isCustom: false },
+    { name: 'Claude Code', globalPath: path.join(os.homedir(), '.claude/skills'), projectPath: '.claude/skills', enabled: true, isCustom: false },
+    { name: 'Cursor', globalPath: path.join(os.homedir(), '.cursor/skills'), projectPath: '.cursor/skills', enabled: true, isCustom: false },
+    { name: 'OpenCode', globalPath: path.join(os.homedir(), '.config/opencode/skill'), projectPath: '.opencode/skill', enabled: false, isCustom: false },
+    { name: 'Codex', globalPath: path.join(os.homedir(), '.codex/skills'), projectPath: '.codex/skills', enabled: false, isCustom: false },
+    { name: 'Amp', globalPath: path.join(os.homedir(), '.config/agents/skills'), projectPath: '.agents/skills', enabled: false, isCustom: false },
+    { name: 'Kilo Code', globalPath: path.join(os.homedir(), '.kilocode/skills'), projectPath: '.kilocode/skills', enabled: false, isCustom: false },
+    { name: 'Roo Code', globalPath: path.join(os.homedir(), '.roo/skills'), projectPath: '.roo/skills', enabled: false, isCustom: false },
+    { name: 'Goose', globalPath: path.join(os.homedir(), '.config/goose/skills'), projectPath: '.goose/skills', enabled: false, isCustom: false },
+    { name: 'Gemini CLI', globalPath: path.join(os.homedir(), '.gemini/skills'), projectPath: '.gemini/skills', enabled: false, isCustom: false },
+    { name: 'GitHub Copilot', globalPath: path.join(os.homedir(), '.copilot/skills'), projectPath: '.github/skills', enabled: false, isCustom: false },
+    { name: 'Clawdbot', globalPath: path.join(os.homedir(), '.clawdbot/skills'), projectPath: 'skills', enabled: false, isCustom: false },
+    { name: 'Droid', globalPath: path.join(os.homedir(), '.factory/skills'), projectPath: '.factory/skills', enabled: false, isCustom: false },
+    { name: 'Windsurf', globalPath: path.join(os.homedir(), '.codeium/windsurf/skills'), projectPath: '.windsurf/skills', enabled: false, isCustom: false },
+    { name: 'Qoder', globalPath: path.join(os.homedir(), '.qoder/skills'), projectPath: '.qoder/skills', enabled: false, isCustom: false },
+];
+
+const DEFAULT_CONFIG = {
+    hubPath: path.join(os.homedir(), 'skills-hub'),
+    projects: [],
+    scanRoots: [path.join(os.homedir(), 'workspace')],
+    agents: DEFAULT_AGENTS,
+};
+
+async function loadConfig() {
+    try {
+        const content = await fsPromises.readFile(CONFIG_PATH, 'utf-8');
+        if (!content.trim()) return DEFAULT_CONFIG;
+        const userConfig = JSON.parse(content);
+
+        const mergedAgents = [...DEFAULT_AGENTS];
+        const userAgents = userConfig.agents || [];
+
+        mergedAgents.forEach((agent, index) => {
+            const userAgent = userAgents.find((ua) => ua.name === agent.name);
+            if (userAgent) {
+                mergedAgents[index] = {
+                    ...agent,
+                    enabled: userAgent.enabled,
+                    projectPath: userAgent.projectPath,
+                    globalPath: userAgent.globalPath,
+                };
+            }
+        });
+
+        const customAgents = userAgents.filter((ua) => ua.isCustom);
+
+        return {
+            ...DEFAULT_CONFIG,
+            ...userConfig,
+            agents: [...mergedAgents, ...customAgents],
+        };
+    } catch {
+        return DEFAULT_CONFIG;
+    }
+}
+
+async function resolveDefaultBranch(git) {
+    try {
+        const result = await git.listRemote(['--symref', 'origin', 'HEAD']);
+        const match = result.match(/ref:\s+refs\/heads\/([^\s]+)\s+HEAD/);
+        return match ? match[1] : null;
+    } catch {
+        return null;
+    }
+}
+
+async function downloadRemoteSkill(repoUrl, subdir, destPath, branch) {
+    const tempDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'skills-hub-import-'));
+    const git = simpleGit(tempDir);
+
+    try {
+        await git.init();
+        await git.addRemote('origin', repoUrl);
+        await git.addConfig('core.sparseCheckout', 'true');
+
+        if (subdir) {
+            await fsPromises.writeFile(path.join(tempDir, '.git/info/sparse-checkout'), `${subdir}\n`, 'utf-8');
+        } else {
+            await fsPromises.writeFile(path.join(tempDir, '.git/info/sparse-checkout'), '*\n', 'utf-8');
+        }
+
+        const requestedBranch = branch ? branch.trim() : '';
+        const defaultBranch = requestedBranch ? null : await resolveDefaultBranch(git);
+        const branchesToTry = requestedBranch
+            ? [requestedBranch]
+            : defaultBranch
+                ? [defaultBranch]
+                : ['main', 'master'];
+
+        let pulledBranch = '';
+        let lastError;
+        for (const candidate of branchesToTry) {
+            try {
+                await git.pull('origin', candidate, { '--depth': 1 });
+                pulledBranch = candidate;
+                break;
+            } catch (error) {
+                lastError = error;
+            }
+        }
+
+        if (!pulledBranch) {
+            throw lastError instanceof Error
+                ? lastError
+                : new Error('Failed to resolve default branch for remote repository.');
+        }
+
+        const sourceContentPath = subdir ? path.join(tempDir, subdir) : tempDir;
+
+        if (!await fse.pathExists(sourceContentPath)) {
+            throw new Error(`Directory '${subdir}' not found in remote repository.`);
+        }
+
+        await fse.ensureDir(path.dirname(destPath));
+        await fse.copy(sourceContentPath, destPath);
+    } finally {
+        await fse.remove(tempDir);
+    }
+}
+
+function startServer(serverArgs) {
+    const portValue = readArgValue(serverArgs, '--port', '-p') || process.env.PORT;
+    const hostValue = readArgValue(serverArgs, '--host', '-H') || process.env.HOSTNAME || process.env.HOST;
+    const port = portValue ? Number(portValue) : 3000;
+    const host = hostValue || '127.0.0.1';
+    const shouldOpen = !serverArgs.includes('--no-open') && process.env.NO_OPEN !== '1';
+
+    if (!Number.isFinite(port) || port <= 0) {
+        console.error(`Invalid port: ${portValue}`);
+        process.exit(1);
+    }
+
+    const root = path.resolve(__dirname, '..');
+    const standaloneDir = path.join(root, '.next', 'standalone');
+    const standaloneServer = path.join(standaloneDir, 'server.js');
+
+    if (!fs.existsSync(standaloneServer)) {
+        console.error('Standalone build not found. Run `npm run build` before running skills-hub.');
+        process.exit(1);
+    }
+
+    const child = spawn(process.execPath, ['server.js'], {
+        cwd: standaloneDir,
+        env: {
+            ...process.env,
+            NODE_ENV: process.env.NODE_ENV || 'production',
+            PORT: String(port),
+            HOST: host,
+            HOSTNAME: host,
+        },
+        stdio: 'inherit',
+    });
+
+    const urlHost = host === '0.0.0.0' ? '127.0.0.1' : host;
+    const url = `http://${urlHost}:${port}`;
+
+    waitForServer(url, 30000)
+        .then(() => {
+            console.log(`\nSkills Hub running at ${url}`);
+            if (shouldOpen) {
+                openBrowser(url);
+            }
+        })
+        .catch((error) => {
+            console.error(`Failed to start server: ${error.message}`);
+        });
+
+    child.on('exit', (code) => {
+        process.exit(code == null ? 0 : code);
+    });
+
+    process.on('SIGINT', () => {
+        child.kill('SIGINT');
+    });
+
+    process.on('SIGTERM', () => {
+        child.kill('SIGTERM');
+    });
+}
+
+function waitForServer(url, timeoutMs) {
+    const start = Date.now();
+    return new Promise((resolve, reject) => {
+        const attempt = () => {
+            const req = http.get(url, (res) => {
+                res.resume();
+                resolve();
+            });
+            req.on('error', () => {
+                if (Date.now() - start > timeoutMs) {
+                    reject(new Error(`Timed out waiting for ${url}`));
+                    return;
+                }
+                setTimeout(attempt, 400);
+            });
+        };
+        attempt();
+    });
+}
+
+function openBrowser(url) {
+    const platform = process.platform;
+    let cmd = '';
+    let cmdArgs = [];
+
+    if (platform === 'darwin') {
+        cmd = 'open';
+        cmdArgs = [url];
+    } else if (platform === 'win32') {
+        cmd = 'cmd';
+        cmdArgs = ['/c', 'start', '', url];
+    } else {
+        cmd = 'xdg-open';
+        cmdArgs = [url];
+    }
+
+    try {
+        const opener = spawn(cmd, cmdArgs, { stdio: 'ignore', detached: true });
+        opener.unref();
+    } catch (error) {
+        console.warn(`Failed to open browser: ${error.message}`);
+    }
+}

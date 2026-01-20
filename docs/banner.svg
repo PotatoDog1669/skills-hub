@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 200" width="600" height="200">
+    <!-- GitHub Banner: Logo + Skills Hub text (Orange theme) -->
+
+    <!-- Logo (3D Cube with code symbol) - positioned left, orange -->
+    <g transform="translate(50, 0)">
+        <!-- Top face -->
+        <path d="M100 20 L170 60 L100 100 L30 60 Z" fill="none" stroke="#d97757" stroke-width="8"
+            stroke-linejoin="round" />
+        <!-- Left face -->
+        <path d="M30 60 L100 100 L100 180 L30 140 Z" fill="none" stroke="#d97757" stroke-width="8"
+            stroke-linejoin="round" />
+        <!-- Right face -->
+        <path d="M100 100 L170 60 L170 140 L100 180 Z" fill="none" stroke="#d97757" stroke-width="8"
+            stroke-linejoin="round" />
+        <!-- Code symbol </> on left face -->
+        <g fill="none" stroke="#d97757" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M55 118 L47 125 L55 132" />
+            <path d="M60 135 L72 115" />
+            <path d="M77 118 L85 125 L77 132" />
+        </g>
+    </g>
+
+    <!-- Skills Hub text - Skills in dark, Hub in orange -->
+    <text x="280" y="115" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+        font-size="56" font-weight="700">
+        <tspan fill="#333333">Skills </tspan>
+        <tspan fill="#d97757">Hub</tspan>
+    </text>
+</svg>

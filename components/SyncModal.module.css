@@ -29,7 +29,8 @@
 
 /* Window Header Bar Style */
 .windowHeader {
-    background: #f8fafc;
+    background: #fafaf9;
+    /* Stone 50 */
     border-bottom: 1px solid var(--border);
     padding: 0.75rem 1rem;
     display: flex;
@@ -120,7 +121,8 @@
 .actions {
     padding: 1rem 1.5rem;
     border-top: 1px solid var(--border);
-    background: #f8fafc;
+    background: #fafaf9;
+    /* Stone 50 */
     /* Footer background */
     display: flex;
     justify-content: flex-end;
@@ -145,14 +147,14 @@
 }
 
 .btnPrimary {
-    background: var(--primary);
-    color: var(--primary-foreground);
-    border-color: var(--primary);
+    background: #d97757;
+    color: #ffffff;
+    border-color: #d97757;
 }
 
 .btnPrimary:hover:not(:disabled) {
     opacity: 0.9;
-    background: var(--primary);
+    background: #c05f3e;
 }
 
 .btnPrimary:disabled {

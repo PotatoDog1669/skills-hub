@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  overflow-y: scroll;
+}
+
 :root {
   /* Editor Theme Colors (Light) */
   --background: #fcfcfc;

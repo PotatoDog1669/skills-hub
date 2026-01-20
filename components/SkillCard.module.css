@@ -18,7 +18,8 @@
 
 /* Window Header Bar */
 .windowHeader {
-    background: #f8fafc;
+    background: #fafaf9;
+    /* Stone 50 */
     border-bottom: 1px solid var(--border);
     padding: 0.75rem 1rem;
     display: flex;
@@ -28,26 +29,30 @@
 
 .dots {
     display: flex;
-    gap: 6px;
+    gap: 8px;
+    /* Slightly wider gap for larger dots */
     margin-right: 0.75rem;
 }
 
 .dot {
-    width: 10px;
-    height: 10px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
 }
 
 .dotRed {
-    background-color: #ef4444;
+    background-color: #ff5f56;
+    border: 1px solid #e0443e;
 }
 
 .dotYellow {
-    background-color: #f59e0b;
+    background-color: #ffbd2e;
+    border: 1px solid #dea123;
 }
 
 .dotGreen {
-    background-color: #22c55e;
+    background-color: #27c93f;
+    border: 1px solid #1aab29;
 }
 
 /* Content Area */
@@ -60,9 +65,11 @@
 
 .title {
     font-family: var(--font-geist-mono), monospace;
-    font-weight: 600;
+    font-weight: 700;
+    /* Bolder */
     font-size: 1.1rem;
-    color: var(--primary);
+    color: #d97757;
+    /* Orange match */
     margin-bottom: 0.5rem;
 }
 
@@ -88,10 +95,12 @@
 }
 
 .badgePrimary {
-    background-color: #e0f2fe;
-    /* Light sky blue */
-    color: #0369a1;
-    border-color: #bae6fd;
+    background-color: #ffedd5;
+    /* Orange 100 */
+    color: #9a3412;
+    /* Orange 800 */
+    border-color: #fed7aa;
+    /* Orange 200 */
 }
 
 .description {
@@ -102,7 +111,8 @@
     flex: 1;
 
     /* Make it look like code comment? */
-    background: #f8fafc;
+    background: #fafaf9;
+    /* Stone 50 */
     padding: 0.75rem;
     border-radius: 0.5rem;
     border: 1px dashed var(--border);
@@ -176,13 +186,14 @@
 }
 
 .btnSave {
-    border-color: #22c55e;
-    color: #15803d;
-    background: #f0fdf4;
+    border-color: #d97757;
+    color: #ffffff;
+    background: #d97757;
 }
 
 .btnSave:hover {
-    background: #dcfce7;
+    background: #c05f3e;
+    border-color: #c05f3e;
 }
 
 .btn:disabled {
