@@ -60,9 +60,16 @@ export async function actionScanAndAddProjects() {
   const newProjects = await scanForProjects(config.scanRoots)
 
   let addedCount = 0
+
+  // Normalize existing projects for comparison
+  const existingProjects = new Set(config.projects.map((p) => path.resolve(p)))
+
   for (const p of newProjects) {
-    if (!config.projects.includes(p)) {
-      config.projects.push(p)
+    const resolvedP = path.resolve(p)
+    if (!existingProjects.has(resolvedP)) {
+      // Add the resolved path to avoid duplicates
+      config.projects.push(resolvedP)
+      existingProjects.add(resolvedP)
       addedCount++
     }
   }

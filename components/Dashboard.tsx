@@ -92,7 +92,14 @@ export function Dashboard({ skills, config }: DashboardProps) {
     <div className="container py-8">
       <div className="flex justify-between items-center mb-6">
         <div className="flex items-center gap-4">
-          <h1 className="text-3xl font-bold">{title}</h1>
+          <div className="flex flex-col">
+            <h1 className="text-3xl font-bold">{title}</h1>
+            {currentView === 'project' && currentId && (
+              <div className="text-xs text-muted-foreground mt-1 font-mono bg-gray-50 px-2 py-0.5 rounded border border-gray-100 self-start">
+                {currentId}
+              </div>
+            )}
+          </div>
           {currentView === 'hub' && (
             <div className="flex gap-2">
               <button

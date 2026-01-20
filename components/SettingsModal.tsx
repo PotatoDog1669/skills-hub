@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { AppConfig } from '@/lib/config'
 import { actionAddScanRoot, actionRemoveScanRoot, actionScanAndAddProjects } from '@/app/actions'
 import { X, Trash2, Plus, Terminal, CheckCircle2, AlertCircle } from 'lucide-react'
@@ -17,6 +17,13 @@ export function SettingsModal({ config, isOpen, onClose }: SettingsModalProps) {
   const [isScanning, setIsScanning] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const { confirm, prompt } = useConfirm()
+
+  // Clear message when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setMessage(null)
+    }
+  }, [isOpen])
 
   if (!isOpen) return null
 

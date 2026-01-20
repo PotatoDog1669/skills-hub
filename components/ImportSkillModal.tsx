@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import styles from './SyncModal.module.css' // Reusing modal styles
 import { X, Download, GitBranch } from 'lucide-react'
 import { actionImportSkill } from '@/app/actions'
@@ -14,6 +14,14 @@ export function ImportSkillModal({ isOpen, onClose }: ImportSkillModalProps) {
   const [url, setUrl] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  // Reset state when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setResult(null)
+      setUrl('')
+    }
+  }, [isOpen])
 
   if (!isOpen) return null
 

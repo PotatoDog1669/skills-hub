@@ -1,6 +1,7 @@
 import fs from 'fs-extra'
 import path from 'path'
 import { getConfig } from './config'
+import os from 'os'
 
 /**
  * Scans directories within the given roots for project-level skill folders.
@@ -11,12 +12,21 @@ import { getConfig } from './config'
 export async function scanForProjects(roots: string[]): Promise<string[]> {
   const foundProjects: Set<string> = new Set()
   const MAX_DEPTH = 5 // Allow deeper nested monorepos
+  const IGNORED_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'out', '.next'])
 
   const config = await getConfig()
   const activeAgents = config.agents.filter((a) => a.enabled)
 
   // Helper to verify if a folder is a valid project (has skill dirs)
   async function isProject(dirPath: string): Promise<boolean> {
+    // Explicitly exclude home directory
+    // We compare resolved paths to be safe
+    const resolvedPath = path.resolve(dirPath)
+    // os.homedir() returns absolute path, resolve ensures consistency
+    if (resolvedPath === path.resolve(os.homedir())) {
+      return false
+    }
+
     for (const agent of activeAgents) {
       if (await fs.pathExists(path.join(dirPath, agent.projectPath))) {
         return true
@@ -31,37 +41,30 @@ export async function scanForProjects(roots: string[]): Promise<string[]> {
     if (!(await fs.pathExists(dir))) return
 
     try {
-      // If this directory ITSELF is a project, add it and stop recursing down this branch?
-      // No, a project might contain sub-projects (monorepo), though simplified logic suggests yes.
-      // Let's check if it is a project first.
-      // CAUTION: 'workspace' root itself isn't a project usually.
-
       if (await isProject(dir)) {
-        foundProjects.add(dir)
-        // We continue scanning? Usually monorepos might have `packages/foo/.agent`
-        // So let's continue.
+        // Normalize path before adding
+        foundProjects.add(path.resolve(dir))
+        // We continue scanning to support monorepos
       }
 
       const entries = await fs.readdir(dir, { withFileTypes: true })
       for (const entry of entries) {
-        if (entry.isDirectory() && !entry.name.startsWith('.')) {
-          // Skip dot folders like .git, .vscode, .agent, etc. during traversal
-          // But wait, .agent IS what we look for?
-          // We look for .agent INSIDE the project. We don't walk INSIDE .agent to find projects.
-          // So skipping dot folders is generally safe for finding PROJECT roots.
+        if (entry.isDirectory()) {
+          // Skip dot folders (except maybe .agent if we needed to, but we don't scan INSIDE .agent)
+          // Also explicitly skip node_modules etc.
+          if (entry.name.startsWith('.') || IGNORED_DIRS.has(entry.name)) {
+            continue
+          }
           await walk(path.join(dir, entry.name), currentDepth + 1)
         }
       }
     } catch (_) {
-      // Permission denied etc.
+      // Permission denied or other fs errors
     }
   }
 
   for (const root of roots) {
-    // Start walking. Root is depth 0.
-    // We look for children mainly.
-    // If user sets root as '~/workspace/Org/Repo', it should be found immediately.
-    await walk(root, 0)
+    await walk(path.resolve(root), 0)
   }
 
   return Array.from(foundProjects)

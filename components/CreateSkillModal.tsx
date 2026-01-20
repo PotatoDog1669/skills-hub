@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import styles from './SyncModal.module.css' // Reuse styles
 import { X, Plus, Save } from 'lucide-react'
 import { actionCreateSkill } from '@/app/actions'
@@ -27,6 +27,16 @@ export function CreateSkillModal({ isOpen, onClose }: CreateSkillModalProps) {
   const [content, setContent] = useState(DEFAULT_TEMPLATE)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Reset state when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setError(null)
+      setName('')
+      setDescription('')
+      setContent(DEFAULT_TEMPLATE)
+    }
+  }, [isOpen])
 
   if (!isOpen) return null
 
