@@ -21,17 +21,9 @@
 
 ## Supported Agents
 
-Skills Hub supports synchronization with a wide range of AI agents:
+Skills Hub supports synchronization with a wide range of AI agents, including Antigravity, Claude Code, Cursor, Trae, and [many more](./docs/supported-agents.md).
 
-- **Antigravity** (`.agent/skills`)
-- **Claude Code** (`.claude/skills`)
-- **Cursor** (`.cursor/skills`)
-- **Trae** (`.trae/skills`)
-- **Windsurf** (`.windsurf/skills`)
-- **OpenCode** (`.opencode/skill`)
-- **Roo Code** (`.roo/skills`)
-- **Goose** (`.goose/skills`)
-- **And more...** (Qoder, Codex, Amp, Kilo Code, Gemini CLI, etc.)
+👉 **[View Full List of Supported Agents & Paths](./docs/supported-agents.md)**
 
 ## Getting Started
 

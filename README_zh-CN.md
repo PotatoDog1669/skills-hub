@@ -23,17 +23,9 @@
 
 ## 支持的 Agent
 
-Skills Hub 支持同步到多种主流 AI 编码助手：
+Skills Hub 支持同步到多种主流 AI 编码助手，包括 Antigravity, Claude Code, Cursor, Trae 等以及 **[更多](./docs/supported-agents.md)**。
 
-- **Antigravity** (`.agent/skills`)
-- **Claude Code** (`.claude/skills`)
-- **Cursor** (`.cursor/skills`)
-- **Trae** (`.trae/skills`)
-- **Windsurf** (`.windsurf/skills`)
-- **OpenCode** (`.opencode/skill`)
-- **Roo Code** (`.roo/skills`)
-- **Goose** (`.goose/skills`)
-- **更多...** (Qoder, Codex, Amp, Kilo Code, Gemini CLI, etc.)
+👉 **[查看完整支持 Agent 列表及路径](./docs/supported-agents.md)**
 
 ## 快速开始
 
