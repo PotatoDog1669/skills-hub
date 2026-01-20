@@ -30,7 +30,7 @@
 ### 使用方法
 
 ```bash
-npm i -g skills-hub
+npm i -g @potatodog1669/skills-hub
 skills-hub
 ```
 
