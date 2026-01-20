@@ -9,6 +9,10 @@
   <img src="https://img.shields.io/badge/status-active-success" alt="Status">
 </p>
 
+<p align="center">
+  English | <a href="./README_zh-CN.md">简体中文</a>
+</p>
+
 **Skills Hub** is a centralized management tool for AI Agent Skills, providing a unified workflow for discovery, management, and synchronization via both **Web UI** and **CLI**.
 
 | <img src="docs/dashboard.png" alt="Skills Hub Dashboard" width="100%">                                                                                                                                                                                                                                                                                                                                      |
