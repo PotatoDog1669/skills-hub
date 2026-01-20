@@ -21,6 +21,12 @@ if (args.includes('--help') || args.includes('-h')) {
     process.exit(0);
 }
 
+if (args.includes('--version') || args.includes('-v')) {
+    const pkg = require(path.join(__dirname, '..', 'package.json'));
+    console.log(pkg.version);
+    process.exit(0);
+}
+
 if (command && !commands.has(command)) {
     console.error(`Unknown command: ${command}`);
     printHelp();
@@ -51,6 +57,7 @@ Server options:
   -p, --port <port>   Port to run the server (default: 3000)
   -H, --host <host>   Host to bind (default: 127.0.0.1)
   --no-open           Do not open the browser automatically
+  -v, --version       Show version number
   -h, --help          Show this help message
 `);
 }
