@@ -9,12 +9,32 @@ const http = require('http');
 const os = require('os');
 const simpleGit = require('simple-git');
 const { spawn } = require('child_process');
+const net = require('net');
 
 const args = process.argv.slice(2);
 const commands = new Set(['import', 'list', 'sync']);
+const flagsWithValues = new Set(['-p', '--port', '-H', '--host', '-b', '--branch', '--target', '-t']);
 
-const commandIndex = args.findIndex((arg) => !arg.startsWith('-'));
-const command = commandIndex >= 0 ? args[commandIndex] : null;
+let command = null;
+let commandIndex = -1;
+
+for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg.startsWith('-')) {
+        // Check if it's a flag=value style
+        if (arg.includes('=')) continue;
+
+        // Check if it's a flag that takes a value next
+        if (flagsWithValues.has(arg)) {
+            i++; // Skip the next argument (the value)
+        }
+    } else {
+        // Found the first non-flag argument, closest thing to a command
+        command = arg;
+        commandIndex = i;
+        break;
+    }
+}
 
 if (args.includes('--help') || args.includes('-h')) {
     printHelp();
@@ -40,7 +60,10 @@ if (command) {
         process.exit(1);
     });
 } else {
-    startServer(args);
+    startServer(args).catch((error) => {
+        console.error(`Failed to start server: ${error.message}`);
+        process.exit(1);
+    });
 }
 
 function printHelp() {
@@ -361,16 +384,55 @@ async function downloadRemoteSkill(repoUrl, subdir, destPath, branch) {
     }
 }
 
-function startServer(serverArgs) {
+function checkPortAvailable(port) {
+    return new Promise((resolve) => {
+        const server = net.createServer();
+        server.once('error', (err) => {
+            if (err.code === 'EADDRINUSE') {
+                resolve(false);
+            } else {
+                resolve(false);
+            }
+        });
+        server.once('listening', () => {
+            server.close(() => {
+                resolve(true);
+            });
+        });
+        server.listen(port);
+    });
+}
+
+async function findAvailablePort(startPort) {
+    let port = startPort;
+    // Check up to 10 ports
+    for (let i = 0; i < 10; i++) {
+        if (await checkPortAvailable(port)) {
+            return port;
+        }
+        port++;
+    }
+    // If we can't find one in 10 tries, just return the start port and let it fail naturally
+    return startPort;
+}
+
+async function startServer(serverArgs) {
     const portValue = readArgValue(serverArgs, '--port', '-p') || process.env.PORT;
     const hostValue = readArgValue(serverArgs, '--host', '-H') || process.env.HOSTNAME || process.env.HOST;
-    const port = portValue ? Number(portValue) : 3000;
+    let port = portValue ? Number(portValue) : 3000;
     const host = hostValue || '127.0.0.1';
     const shouldOpen = !serverArgs.includes('--no-open') && process.env.NO_OPEN !== '1';
 
     if (!Number.isFinite(port) || port <= 0) {
         console.error(`Invalid port: ${portValue}`);
         process.exit(1);
+    }
+
+    // Resolve port availability
+    const resolvedPort = await findAvailablePort(port);
+    if (resolvedPort !== port) {
+        console.log(`Port ${port} is in use, using ${resolvedPort} instead.`);
+        port = resolvedPort;
     }
 
     const root = path.resolve(__dirname, '..');
