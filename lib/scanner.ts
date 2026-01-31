@@ -58,7 +58,7 @@ export async function scanForProjects(roots: string[]): Promise<string[]> {
           await walk(path.join(dir, entry.name), currentDepth + 1)
         }
       }
-    } catch (_) {
+    } catch {
       // Permission denied or other fs errors
     }
   }

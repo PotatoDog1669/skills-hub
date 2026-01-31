@@ -16,7 +16,7 @@ interface SkillDetailViewProps {
 
 interface SkillData {
   content: string
-  metadata: Record<string, any>
+  metadata: Record<string, unknown>
 }
 
 export function SkillDetailView({ path }: SkillDetailViewProps) {
@@ -71,7 +71,8 @@ export function SkillDetailView({ path }: SkillDetailViewProps) {
   const { metadata, content } = skillData
 
   // Use metadata description if available, otherwise fallback
-  const description = metadata['description'] || 'Activates when the user needs this skill.'
+  const description =
+    (metadata['description'] as string) || 'Activates when the user needs this skill.'
 
   const name = path.split('/').pop() || 'Unknown Skill'
 
