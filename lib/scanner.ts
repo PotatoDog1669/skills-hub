@@ -49,7 +49,7 @@ export async function scanForProjects(roots: string[]): Promise<string[]> {
 
       const entries = await fs.readdir(dir, { withFileTypes: true })
       for (const entry of entries) {
-        if (entry.isDirectory()) {
+        if (entry.isDirectory() || entry.isSymbolicLink()) {
           // Skip dot folders (except maybe .agent if we needed to, but we don't scan INSIDE .agent)
           // Also explicitly skip node_modules etc.
           if (entry.name.startsWith('.') || IGNORED_DIRS.has(entry.name)) {

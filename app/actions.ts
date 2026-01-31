@@ -18,8 +18,12 @@ import path from 'path'
 import fs from 'fs-extra'
 import { downloadRemoteSkill } from '@/lib/remote'
 
-export async function actionSyncSkill(source: string, destParent: string) {
-  await syncSkill(source, destParent)
+export async function actionSyncSkill(
+  source: string,
+  destParent: string,
+  syncMode?: 'copy' | 'link'
+) {
+  await syncSkill(source, destParent, syncMode)
   revalidatePath('/')
 }
 

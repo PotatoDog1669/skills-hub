@@ -14,96 +14,13 @@ interface SkillDetailViewProps {
   path: string
 }
 
-interface ParsedContent {
-  metadata: Record<string, string>
-  body: string
-}
-
-function extractMetadata(text: string): ParsedContent {
-  if (!text) return { metadata: {}, body: '' }
-
-  // Standard YAML frontmatter regex
-  const match = text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/)
-
-  // Fallback for non-standard or missing frontmatter
-  if (!match) {
-    // Try to check if it starts with "key: value" lines without ---
-    const lines = text.split('\n')
-    const metadata: Record<string, string> = {}
-    let bodyStartIndex = 0
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]
-      const colonIndex = line.indexOf(':')
-      // Allow lines that start with key: value, ignore comments // or #
-      if (colonIndex > 0 && !line.trim().startsWith('#') && !line.trim().startsWith('//')) {
-        const key = line.slice(0, colonIndex).trim()
-        const value = line.slice(colonIndex + 1).trim()
-        // Heuristic: if key has spaces or weird chars, it might not be a key
-        if (/^[a-zA-Z0-9_-]+$/.test(key)) {
-          metadata[key] = value
-        } else {
-          bodyStartIndex = i
-          break
-        }
-      } else if (line.trim() === '') {
-        continue
-      } else {
-        bodyStartIndex = i
-        break
-      }
-    }
-
-    // If we found some metadata, verify it looks legit (e.g., has name or description)
-    if (Object.keys(metadata).length > 0) {
-      return {
-        metadata,
-        body: lines.slice(bodyStartIndex).join('\n'),
-      }
-    }
-
-    return { metadata: {}, body: text }
-  }
-
-  const frontMatter = match[1]
-  const body = match[2]
-  const metadata: Record<string, string> = {}
-
-  const lines = frontMatter.split('\n')
-  let currentParent = ''
-
-  lines.forEach((line) => {
-    if (!line.trim()) return
-
-    const colonIndex = line.indexOf(':')
-    if (colonIndex > 0) {
-      const key = line.slice(0, colonIndex).trim()
-      const value = line.slice(colonIndex + 1).trim()
-
-      // Check if line is indented (nested)
-      const isIndented = line.startsWith('  ') || line.startsWith('\t')
-
-      if (isIndented && currentParent) {
-        // Nested key: use parent.child format
-        metadata[`${currentParent}.${key}`] = value
-      } else if (!isIndented) {
-        if (value) {
-          // Top-level key with value
-          metadata[key] = value
-          currentParent = ''
-        } else {
-          // Top-level key without value = parent of nested structure
-          currentParent = key
-        }
-      }
-    }
-  })
-
-  return { metadata, body }
+interface SkillData {
+  content: string
+  metadata: Record<string, any>
 }
 
 export function SkillDetailView({ path }: SkillDetailViewProps) {
-  const [rawContent, setRawContent] = useState<string | null>(null)
+  const [skillData, setSkillData] = useState<SkillData | null>(null)
   const [loading, setLoading] = useState(true)
   const searchParams = useSearchParams()
 
@@ -111,9 +28,9 @@ export function SkillDetailView({ path }: SkillDetailViewProps) {
     let mounted = true
     async function fetchContent() {
       try {
-        const text = await actionGetSkillContent(path)
+        const result = await actionGetSkillContent(path)
         if (mounted) {
-          setRawContent(text)
+          setSkillData(result)
         }
       } catch (e) {
         console.error(e)
@@ -127,11 +44,6 @@ export function SkillDetailView({ path }: SkillDetailViewProps) {
     }
   }, [path])
 
-  const { metadata, body: content } = useMemo(() => extractMetadata(rawContent || ''), [rawContent])
-
-  // Use metadata description if available, otherwise fallback
-  const description = metadata['description'] || 'Activates when the user needs this skill.'
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
@@ -140,7 +52,7 @@ export function SkillDetailView({ path }: SkillDetailViewProps) {
     )
   }
 
-  if (!rawContent) {
+  if (!skillData) {
     return (
       <div className="p-8 text-center bg-red-50 border border-red-100 rounded-lg text-red-600 container max-w-4xl mt-8">
         <h3 className="font-semibold mb-2">Error Loading Skill</h3>
@@ -155,6 +67,11 @@ export function SkillDetailView({ path }: SkillDetailViewProps) {
       </div>
     )
   }
+
+  const { metadata, content } = skillData
+
+  // Use metadata description if available, otherwise fallback
+  const description = metadata['description'] || 'Activates when the user needs this skill.'
 
   const name = path.split('/').pop() || 'Unknown Skill'
 
@@ -233,7 +150,8 @@ export function SkillDetailView({ path }: SkillDetailViewProps) {
                             {key}
                           </td>
                           <td className="py-4 px-6 text-slate-700 bg-white leading-relaxed">
-                            {value}
+                            {/* Render value, handle objects if necessary or JSON stringify */}
+                            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
                           </td>
                         </tr>
                       ))}

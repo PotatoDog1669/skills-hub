@@ -41,7 +41,7 @@ if (args.includes('--help') || args.includes('-h')) {
     process.exit(0);
 }
 
-if (args.includes('--version') || args.includes('-v')) {
+if (args.includes('--version') || args.includes('-v') || args.includes('-V')) {
     const pkg = require(path.join(__dirname, '..', 'package.json'));
     console.log(pkg.version);
     process.exit(0);
@@ -384,7 +384,7 @@ async function downloadRemoteSkill(repoUrl, subdir, destPath, branch) {
     }
 }
 
-function checkPortAvailable(port) {
+function checkPortAvailable(port, host) {
     return new Promise((resolve) => {
         const server = net.createServer();
         server.once('error', (err) => {
@@ -399,15 +399,15 @@ function checkPortAvailable(port) {
                 resolve(true);
             });
         });
-        server.listen(port);
+        server.listen(port, host);
     });
 }
 
-async function findAvailablePort(startPort) {
+async function findAvailablePort(startPort, host) {
     let port = startPort;
     // Check up to 10 ports
     for (let i = 0; i < 10; i++) {
-        if (await checkPortAvailable(port)) {
+        if (await checkPortAvailable(port, host)) {
             return port;
         }
         port++;
@@ -429,7 +429,7 @@ async function startServer(serverArgs) {
     }
 
     // Resolve port availability
-    const resolvedPort = await findAvailablePort(port);
+    const resolvedPort = await findAvailablePort(port, host);
     if (resolvedPort !== port) {
         console.log(`Port ${port} is in use, using ${resolvedPort} instead.`);
         port = resolvedPort;

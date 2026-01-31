@@ -35,11 +35,16 @@ async function scanDirForSkills(basePath: string, depth = 0): Promise<string[]> 
   const entries = await fs.readdir(basePath, { withFileTypes: true })
   const skillPaths: string[] = []
   for (const entry of entries) {
-    if (entry.isDirectory()) {
+    if (entry.isDirectory() || entry.isSymbolicLink()) {
       const fullPath = path.join(basePath, entry.name)
       if (await isSkillDir(fullPath)) {
         skillPaths.push(fullPath)
       } else {
+        // Recursive scan
+        // Warning: Deeply nested symlinks or loops could be dangerous,
+        // but depth is limited to 3 so it's relatively safe.
+        // We might want to avoid following symlinks recursively if they aren't skill dirs,
+        // but for now, let's treat them like directories.
         skillPaths.push(...(await scanDirForSkills(fullPath, depth + 1)))
       }
     }
@@ -111,11 +116,15 @@ export async function getAllSkills(): Promise<Skill[]> {
   return allSkills
 }
 
-export async function getSkillContent(skillPath: string): Promise<string | null> {
+export async function getSkillContent(
+  skillPath: string
+): Promise<{ content: string; metadata: Record<string, any> } | null> {
   try {
     const mdPath = path.join(skillPath, 'SKILL.md')
     if (await fs.pathExists(mdPath)) {
-      return await fs.readFile(mdPath, 'utf-8')
+      const fileContent = await fs.readFile(mdPath, 'utf-8')
+      const { content, data } = matter(fileContent)
+      return { content, metadata: data }
     }
     return null
   } catch (error) {
