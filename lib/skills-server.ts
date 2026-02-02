@@ -118,8 +118,8 @@ export async function getAllSkills(): Promise<Skill[]> {
 
 export async function getSkillContent(
   skillPath: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<{ content: string; metadata: Record<string, any> } | null> {
-  // eslint-disable-line @typescript-eslint/no-explicit-any
   try {
     const mdPath = path.join(skillPath, 'SKILL.md')
     if (await fs.pathExists(mdPath)) {
