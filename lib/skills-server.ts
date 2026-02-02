@@ -21,7 +21,7 @@ async function parseSkill(dirPath: string): Promise<Partial<Skill>> {
       name: data.name || path.basename(dirPath),
       description: description.slice(0, 200),
     }
-  } catch (_) {
+  } catch {
     return {
       name: path.basename(dirPath),
       description: 'Error parsing SKILL.md',
@@ -119,6 +119,7 @@ export async function getAllSkills(): Promise<Skill[]> {
 export async function getSkillContent(
   skillPath: string
 ): Promise<{ content: string; metadata: Record<string, any> } | null> {
+  // eslint-disable-line @typescript-eslint/no-explicit-any
   try {
     const mdPath = path.join(skillPath, 'SKILL.md')
     if (await fs.pathExists(mdPath)) {

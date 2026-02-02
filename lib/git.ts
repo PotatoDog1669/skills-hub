@@ -62,7 +62,7 @@ export async function checkGitStatus(skillPath: string): Promise<GitStatus> {
             isSubDir: true,
           }
         }
-      } catch (_) {
+      } catch {
         // Not inside a repo or error running git
       }
     }

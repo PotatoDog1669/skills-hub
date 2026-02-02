@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { parseArgs } from 'node:util'
 import path from 'path'
 import { downloadRemoteSkill } from '../lib/remote'
 import { getConfig, AgentConfig } from '../lib/config'

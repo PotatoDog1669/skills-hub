@@ -1,7 +1,7 @@
 'use client'
 
 import { actionGetSkillContent } from '@/app/actions'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -16,6 +16,7 @@ interface SkillDetailViewProps {
 
 interface SkillData {
   content: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata: Record<string, any>
 }
 
