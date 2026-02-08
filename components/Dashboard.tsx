@@ -4,22 +4,36 @@ import { Skill } from '@/lib/skills-types'
 import { AppConfig } from '@/lib/config'
 import { SkillCard, UnifiedSkill, ViewContext } from './SkillCard'
 import { SyncModal } from './SyncModal'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { IntroductionView } from './IntroductionView'
 import { SkillDetailView } from './SkillDetailView'
 import { useSearchParams } from 'next/navigation'
 import { ImportSkillModal } from './ImportSkillModal'
 import { CreateSkillModal } from './CreateSkillModal'
 import { Download, Plus } from 'lucide-react'
+import Link from 'next/link'
+import { ProviderPanel } from './ProviderPanel'
+import type { AppType, ProviderRecord } from '@/lib/core/provider-types'
 
 interface DashboardProps {
   skills: Skill[]
   config: AppConfig
+  providers: ProviderRecord[]
+  currentProviders: Record<AppType, ProviderRecord | null>
 }
 
-export function Dashboard({ skills, config }: DashboardProps) {
+function PlaceholderCard({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center">
+      <h3 className="text-lg font-semibold">{title}</h3>
+      <p className="text-sm text-gray-500 mt-2">{text}</p>
+    </div>
+  )
+}
+
+export function Dashboard({ skills, config, providers, currentProviders }: DashboardProps) {
   const searchParams = useSearchParams()
-  const currentView = searchParams.get('view') || 'all'
+  const currentView = searchParams.get('view') || 'inventory-skills'
   const currentId = searchParams.get('id')
 
   const viewContext: ViewContext = { view: currentView, id: currentId }
@@ -29,37 +43,35 @@ export function Dashboard({ skills, config }: DashboardProps) {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
 
-  // 1. Group ALL skills first.
-  const allGroups: Record<string, UnifiedSkill> = {}
-  skills.forEach((skill) => {
-    if (!allGroups[skill.name]) {
-      allGroups[skill.name] = {
-        name: skill.name,
-        description: skill.description,
-        instances: [],
+  const allGroups = useMemo(() => {
+    const groups: Record<string, UnifiedSkill> = {}
+    skills.forEach((skill) => {
+      if (!groups[skill.name]) {
+        groups[skill.name] = {
+          name: skill.name,
+          description: skill.description,
+          instances: [],
+        }
       }
-    }
-    if (skill.description && skill.description.length > allGroups[skill.name].description.length) {
-      allGroups[skill.name].description = skill.description
-    }
-    allGroups[skill.name].instances.push(skill)
-  })
+      if (skill.description && skill.description.length > groups[skill.name].description.length) {
+        groups[skill.name].description = skill.description
+      }
+      groups[skill.name].instances.push(skill)
+    })
 
-  // 2. Filter Groups based on View
-  const filteredGroups = Object.values(allGroups).filter((group) => {
-    if (currentView === 'all') return true
+    return groups
+  }, [skills])
 
-    if (currentView === 'hub') {
-      return group.instances.some((s) => s.location === 'hub')
-    }
-    if (currentView === 'agent') {
-      return group.instances.some((s) => s.agentName === currentId)
-    }
-    if (currentView === 'project') {
-      return group.instances.some((s) => s.path.startsWith(currentId || ''))
-    }
-    return true
-  })
+  const filteredGroups = useMemo(() => {
+    return Object.values(allGroups).filter((group) => {
+      if (currentView === 'inventory-skills' || currentView === 'all') return true
+      if (currentView === 'hub') return group.instances.some((s) => s.location === 'hub')
+      if (currentView === 'agent') return group.instances.some((s) => s.agentName === currentId)
+      if (currentView === 'project')
+        return group.instances.some((s) => s.path.startsWith(currentId || ''))
+      return false
+    })
+  }, [allGroups, currentId, currentView])
 
   const handleSync = (skill: Skill) => {
     setSelectedSkill(skill)
@@ -67,25 +79,129 @@ export function Dashboard({ skills, config }: DashboardProps) {
   }
 
   const title =
-    currentView === 'all'
-      ? 'All Skills'
-      : currentView === 'hub'
-        ? 'Central Skills Hub'
-        : currentView === 'agent'
-          ? `${currentId} Skills`
-          : currentView === 'introduction'
-            ? 'Introduction'
-            : currentView === 'detail'
-              ? 'Skill Details'
-              : `Project Skills`
+    currentView === 'inventory-providers'
+      ? 'Inventory / Providers'
+      : currentView === 'inventory-skills' || currentView === 'all'
+        ? 'Inventory / Skills'
+        : currentView === 'inventory-loadouts'
+          ? 'Inventory / Loadouts'
+          : currentView === 'inventory-policies'
+            ? 'Inventory / Policies'
+            : currentView === 'projects'
+              ? 'Projects'
+              : currentView === 'deploy'
+                ? 'Deploy'
+                : currentView === 'hub'
+                  ? 'Inventory / Skills / Hub'
+                  : currentView === 'agent'
+                    ? `Projects / Agent / ${currentId}`
+                    : currentView === 'introduction'
+                      ? 'Introduction'
+                      : currentView === 'detail'
+                        ? 'Skill Details'
+                        : 'Projects / Skills'
 
   if (currentView === 'introduction') {
     return <IntroductionView />
   }
 
   if (currentView === 'detail') {
-    const path = searchParams.get('path')
-    if (path) return <SkillDetailView path={path} />
+    const skillPath = searchParams.get('path')
+    if (skillPath) return <SkillDetailView path={skillPath} />
+  }
+
+  if (currentView === 'inventory-providers') {
+    return (
+      <div className="container py-8 space-y-6">
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold">{title}</h1>
+          <span className="text-muted-foreground">{providers.length} providers configured</span>
+        </div>
+        <ProviderPanel providers={providers} currentProviders={currentProviders} />
+      </div>
+    )
+  }
+
+  if (currentView === 'inventory-loadouts') {
+    return (
+      <div className="container py-8 space-y-6">
+        <h1 className="text-3xl font-bold">{title}</h1>
+        <PlaceholderCard
+          title="Loadouts are planned next"
+          text="M1 聚焦 Provider 切换稳定性，Loadout 在下一里程碑接入。"
+        />
+      </div>
+    )
+  }
+
+  if (currentView === 'inventory-policies') {
+    return (
+      <div className="container py-8 space-y-6">
+        <h1 className="text-3xl font-bold">{title}</h1>
+        <PlaceholderCard
+          title="Policy templates are planned next"
+          text="M1 先交付 Provider，Policy (AGENTS.md 模板) 将在后续里程碑落地。"
+        />
+      </div>
+    )
+  }
+
+  if (currentView === 'projects') {
+    return (
+      <div className="container py-8 space-y-6">
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold">{title}</h1>
+          <span className="text-muted-foreground">{config.projects.length} projects</span>
+        </div>
+        {config.projects.length === 0 ? (
+          <PlaceholderCard
+            title="No projects yet"
+            text="在 Sidebar 的 Projects 区域添加项目，或用 Scan Roots 自动发现 Git 项目。"
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-3">
+            {config.projects.map((projectPath) => (
+              <Link
+                key={projectPath}
+                href={`/?view=project&id=${encodeURIComponent(projectPath)}`}
+                className="rounded-lg border border-gray-200 bg-white p-4 hover:bg-gray-50"
+              >
+                <div className="font-medium">{projectPath.split('/').pop()}</div>
+                <div className="text-xs text-gray-500 mt-1 font-mono">{projectPath}</div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (currentView === 'deploy') {
+    return (
+      <div className="container py-8 space-y-6">
+        <h1 className="text-3xl font-bold">{title}</h1>
+        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+          <div className="text-sm text-gray-600">
+            一键部署入口在后续里程碑上线。当前可先在 Inventory/Providers 完成账号切换，再执行 Skills
+            Sync。
+          </div>
+          <div className="grid md:grid-cols-3 gap-3">
+            {Object.entries(currentProviders).map(([appType, provider]) => (
+              <div key={appType} className="rounded border border-gray-200 p-3">
+                <div className="text-xs uppercase tracking-wide text-gray-500">{appType}</div>
+                <div className="font-medium mt-1">{provider?.name || 'Not selected'}</div>
+              </div>
+            ))}
+          </div>
+          <Link
+            href="/?view=inventory-providers"
+            className="inline-block px-3 py-1.5 text-sm bg-[#d97757] text-white rounded-md"
+          >
+            Open Provider Inventory
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -100,7 +216,7 @@ export function Dashboard({ skills, config }: DashboardProps) {
               </div>
             )}
           </div>
-          {currentView === 'hub' && (
+          {(currentView === 'hub' || currentView === 'inventory-skills') && (
             <div className="flex gap-2">
               <button
                 onClick={() => setIsCreateModalOpen(true)}

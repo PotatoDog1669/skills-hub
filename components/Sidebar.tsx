@@ -2,15 +2,28 @@
 
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { Home, Folder, Layers, Plus, Trash2, Settings, BookOpen } from 'lucide-react'
+import {
+  Boxes,
+  Folder,
+  Layers,
+  Plus,
+  Trash2,
+  Settings,
+  BookOpen,
+  Rocket,
+  Shield,
+  Package,
+  ScrollText,
+  Bot,
+} from 'lucide-react'
 import styles from './Sidebar.module.css'
 import { AppConfig } from '@/lib/config'
 import clsx from 'clsx'
-import { actionAddProject, actionRemoveProject } from '@/app/actions'
+import { actionAddProject, actionPickDirectory, actionRemoveProject } from '@/app/actions'
 import { useState } from 'react'
 import { SettingsModal } from './SettingsModal'
 import { AgentManagerModal } from './AgentManagerModal'
-import { useConfirm } from './ConfirmProvider'
+import { useConfirm } from '@/components/ConfirmProvider'
 
 interface SidebarProps {
   config: AppConfig
@@ -18,36 +31,47 @@ interface SidebarProps {
 
 export function Sidebar({ config }: SidebarProps) {
   const searchParams = useSearchParams()
-  const currentView = searchParams.get('view') || 'all'
+  const currentView = searchParams.get('view') || 'inventory-skills'
   const currentId = searchParams.get('id')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isAgentManagerOpen, setIsAgentManagerOpen] = useState(false)
   const { confirm, prompt } = useConfirm()
 
   const handleAddProject = async () => {
-    const path = await prompt({
-      title: 'Add Project',
-      message: 'Enter absolute project path:',
-      placeholder: '/Users/username/my-project',
-    })
+    const result = await actionPickDirectory({ title: 'Select Project Folder' })
 
-    if (path) {
-      await actionAddProject(path)
+    let selectedPath: string | null = null
+    if (result.status === 'selected') {
+      selectedPath = result.path
+    } else if (result.status === 'unsupported' || result.status === 'error') {
+      selectedPath = await prompt({
+        title: 'Add Project',
+        message: 'Enter absolute project path:',
+        placeholder: '/Users/username/my-project',
+      })
+    }
+
+    if (selectedPath) {
+      try {
+        await actionAddProject(selectedPath)
+      } catch (error) {
+        alert(error instanceof Error ? error.message : `Failed to add project: ${String(error)}`)
+      }
     }
   }
 
-  const handleRemoveProject = async (e: React.MouseEvent, path: string) => {
+  const handleRemoveProject = async (e: React.MouseEvent, projectPath: string) => {
     e.preventDefault()
     e.stopPropagation()
     if (
       await confirm({
         title: 'Remove Project',
-        message: `Remove project "${path}" from Skills Hub?`,
+        message: `Remove project "${projectPath}" from Skills Hub?`,
         type: 'danger',
         confirmText: 'Remove',
       })
     ) {
-      await actionRemoveProject(path)
+      await actionRemoveProject(projectPath)
     }
   }
 
@@ -55,40 +79,7 @@ export function Sidebar({ config }: SidebarProps) {
     <>
       <aside className={styles.sidebar}>
         <div className={styles.title}>
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="28" height="28">
-            <path
-              d="M100 20 L170 60 L100 100 L30 60 Z"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="12"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M30 60 L100 100 L100 180 L30 140 Z"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="12"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M100 100 L170 60 L170 140 L100 180 Z"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="12"
-              strokeLinejoin="round"
-            />
-            <g
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M55 118 L47 125 L55 132" />
-              <path d="M60 135 L72 115" />
-              <path d="M77 118 L85 125 L77 132" />
-            </g>
-          </svg>
+          <Boxes size={20} />
           Skills Hub
         </div>
 
@@ -101,57 +92,46 @@ export function Sidebar({ config }: SidebarProps) {
             <BookOpen size={16} className="shrink-0" />
             <span>Introduction</span>
           </Link>
+        </nav>
+
+        <nav className={styles.section}>
+          <div className={styles.sectionTitle}>Inventory</div>
           <Link
-            href="/"
+            href="/?view=inventory-providers"
+            className={clsx(styles.navItem, currentView === 'inventory-providers' && styles.active)}
+          >
+            <Shield size={16} className="shrink-0" />
+            <span>Providers</span>
+          </Link>
+          <Link
+            href="/?view=inventory-skills"
             className={clsx(
               styles.navItem,
-              (currentView === 'all' || !currentView) && !currentId && styles.active
+              (currentView === 'inventory-skills' || currentView === 'all') && styles.active
             )}
           >
-            <Home size={16} className="shrink-0" />
-            <span>All Skills</span>
+            <Layers size={16} className="shrink-0" />
+            <span>Skills</span>
           </Link>
           <Link
-            href="/?view=hub"
-            className={clsx(styles.navItem, currentView === 'hub' && styles.active)}
+            href="/?view=inventory-loadouts"
+            className={clsx(styles.navItem, currentView === 'inventory-loadouts' && styles.active)}
           >
-            <Layers size={16} className="shrink-0" />
-            <span>Central Hub</span>
+            <Package size={16} className="shrink-0" />
+            <span>Loadouts</span>
+          </Link>
+          <Link
+            href="/?view=inventory-policies"
+            className={clsx(styles.navItem, currentView === 'inventory-policies' && styles.active)}
+          >
+            <ScrollText size={16} className="shrink-0" />
+            <span>Policies</span>
           </Link>
         </nav>
 
         <nav className={styles.section}>
           <div className={styles.sectionTitle}>
-            <span>Agents</span>
-            <div className={styles.actionsContainer}>
-              <button
-                onClick={() => setIsAgentManagerOpen(true)}
-                className={styles.actionBtn}
-                title="Manage Agents"
-              >
-                <Settings size={12} />
-              </button>
-            </div>
-          </div>
-          {config.agents
-            .filter((a) => a.enabled)
-            .map((agent) => (
-              <Link
-                key={agent.name}
-                href={`/?view=agent&id=${encodeURIComponent(agent.name)}`}
-                className={clsx(
-                  styles.navItem,
-                  currentView === 'agent' && currentId === agent.name && styles.active
-                )}
-              >
-                <span className="truncate">{agent.name}</span>
-              </Link>
-            ))}
-        </nav>
-
-        <nav className={styles.section}>
-          <div className={styles.sectionTitle}>
-            <span>PROJECTS</span>
+            <span>Projects</span>
             <div className={styles.actionsContainer}>
               <button
                 onClick={() => setIsSettingsOpen(true)}
@@ -165,6 +145,15 @@ export function Sidebar({ config }: SidebarProps) {
               </button>
             </div>
           </div>
+
+          <Link
+            href="/?view=projects"
+            className={clsx(styles.navItem, currentView === 'projects' && styles.active)}
+          >
+            <Folder size={16} className="shrink-0" />
+            <span>All Projects</span>
+          </Link>
+
           <div className="space-y-0.5">
             {config.projects.map((proj, idx) => {
               const name = proj.split('/').pop() || proj
@@ -197,6 +186,47 @@ export function Sidebar({ config }: SidebarProps) {
               </div>
             )}
           </div>
+        </nav>
+
+        <nav className={styles.section}>
+          <div className={styles.sectionTitle}>
+            <span>Agents</span>
+            <div className={styles.actionsContainer}>
+              <button
+                onClick={() => setIsAgentManagerOpen(true)}
+                className={styles.actionBtn}
+                title="Manage Agents"
+              >
+                <Settings size={12} />
+              </button>
+            </div>
+          </div>
+          {config.agents
+            .filter((a) => a.enabled)
+            .map((agent) => (
+              <Link
+                key={agent.name}
+                href={`/?view=agent&id=${encodeURIComponent(agent.name)}`}
+                className={clsx(
+                  styles.navItem,
+                  currentView === 'agent' && currentId === agent.name && styles.active
+                )}
+              >
+                <Bot size={16} className="shrink-0" />
+                <span className="truncate">{agent.name}</span>
+              </Link>
+            ))}
+        </nav>
+
+        <nav className={styles.section}>
+          <div className={styles.sectionTitle}>Deploy</div>
+          <Link
+            href="/?view=deploy"
+            className={clsx(styles.navItem, currentView === 'deploy' && styles.active)}
+          >
+            <Rocket size={16} className="shrink-0" />
+            <span>Apply</span>
+          </Link>
         </nav>
       </aside>
 
