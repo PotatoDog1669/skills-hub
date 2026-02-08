@@ -8,12 +8,28 @@ const path = require('path');
 const http = require('http');
 const os = require('os');
 const simpleGit = require('simple-git');
+const matter = require('gray-matter');
 const { spawn } = require('child_process');
 const net = require('net');
 
 const args = process.argv.slice(2);
-const commands = new Set(['import', 'list', 'sync']);
-const flagsWithValues = new Set(['-p', '--port', '-H', '--host', '-b', '--branch', '--target', '-t']);
+const commands = new Set(['import', 'list', 'sync', 'provider']);
+const flagsWithValues = new Set([
+    '-p',
+    '--port',
+    '-H',
+    '--host',
+    '-b',
+    '--branch',
+    '--target',
+    '-t',
+    '--app',
+    '--id',
+    '--name',
+    '--config-json',
+    '--config-file',
+]);
+let providerCorePromise = null;
 
 let command = null;
 let commandIndex = -1;
@@ -75,6 +91,16 @@ Commands:
   import <url> [--branch <branch>]   Import a skill from a git repository
   list                               List skills in the hub directory
   sync --all | --target <name>       Sync hub skills to agent targets
+  provider <subcommand>              Manage provider profiles and switching
+
+Provider subcommands:
+  provider list [--app <app>]                                List providers
+  provider add --app <app> --name <name> --config-json <json>
+  provider add --app <app> --name <name> --config-file <path>
+  provider update --id <id> [--name <name>] [--config-json <json>|--config-file <path>]
+  provider switch --app <app> --id <providerId>              Switch current provider
+  provider delete --id <providerId>                          Delete a provider
+  provider restore --app <app>                               Restore latest live backup
 
 Server options:
   -p, --port <port>   Port to run the server (default: 3000)
@@ -114,6 +140,85 @@ function expandHome(inputPath) {
     return inputPath;
 }
 
+function normalizeRepoWebUrl(url) {
+    return url.trim().replace(/\/$/, '').replace(/\.git$/, '');
+}
+
+function parseSkillImportUrl(url, preferredBranch) {
+    const input = url.trim();
+    if (!input) {
+        throw new Error('Missing URL for import.');
+    }
+
+    let repoWebUrl = '';
+    let branch = preferredBranch ? preferredBranch.trim() : '';
+    let subdir = '';
+
+    if (input.includes('/tree/')) {
+        const [base, restRaw = ''] = input.split('/tree/', 2);
+        repoWebUrl = normalizeRepoWebUrl(base);
+
+        const rest = restRaw.replace(/^\/+/, '');
+        if (rest) {
+            const parts = rest.split('/').filter(Boolean);
+            if (!branch && parts.length > 0) {
+                branch = parts[0];
+            }
+            if (parts.length > 1) {
+                subdir = parts.slice(1).join('/');
+            }
+        }
+    } else {
+        repoWebUrl = normalizeRepoWebUrl(input);
+    }
+
+    const skillName = subdir ? path.basename(subdir) : path.basename(repoWebUrl);
+    if (!repoWebUrl || !skillName) {
+        throw new Error('Invalid skill import URL.');
+    }
+
+    return {
+        repoUrl: `${repoWebUrl}.git`,
+        repoWebUrl,
+        branch: branch || undefined,
+        subdir,
+        skillName,
+    };
+}
+
+function buildGitSourceUrl(repoWebUrl, branch, subdir) {
+    const normalized = normalizeRepoWebUrl(repoWebUrl);
+    if (!branch) {
+        return normalized;
+    }
+    if (subdir) {
+        return `${normalized}/tree/${branch}/${subdir}`;
+    }
+    return `${normalized}/tree/${branch}`;
+}
+
+async function attachSkillImportMetadata(skillDirPath, metadata) {
+    const skillMdPath = path.join(skillDirPath, 'SKILL.md');
+    if (!await fse.pathExists(skillMdPath)) {
+        return;
+    }
+
+    const rawContent = await fsPromises.readFile(skillMdPath, 'utf-8');
+    const parsed = matter(rawContent);
+    const nextFrontmatter = {
+        ...parsed.data,
+        source_repo: metadata.sourceRepo,
+        source_url: metadata.sourceUrl,
+        source_branch: metadata.sourceBranch,
+        source_subdir: metadata.sourceSubdir || '/',
+        source_last_updated: metadata.sourceLastUpdated,
+        imported_at: metadata.importedAt,
+    };
+
+    const nextRawContent = matter.stringify(parsed.content, nextFrontmatter);
+    await fsPromises.writeFile(skillMdPath, nextRawContent, 'utf-8');
+}
+
 async function runCommand(commandName, commandArgs) {
     switch (commandName) {
         case 'import':
@@ -125,9 +230,144 @@ async function runCommand(commandName, commandArgs) {
         case 'sync':
             await handleSync(commandArgs);
             return;
+        case 'provider':
+            await handleProvider(commandArgs);
+            return;
         default:
             console.error(`Unknown command: ${commandName}`);
             process.exit(1);
+    }
+}
+
+function loadProviderCore() {
+    if (!providerCorePromise) {
+        providerCorePromise = import('../lib/core/provider-core.mjs');
+    }
+    return providerCorePromise;
+}
+
+function parseJsonArg(jsonText) {
+    try {
+        const parsed = JSON.parse(jsonText);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new Error('must be a JSON object');
+        }
+        return parsed;
+    } catch (error) {
+        throw new Error(`Invalid JSON config: ${error.message || error}`);
+    }
+}
+
+async function readProviderConfigFromArgs(commandArgs) {
+    const configJson = readArgValue(commandArgs, '--config-json');
+    const configFile = readArgValue(commandArgs, '--config-file');
+
+    if (configJson && configFile) {
+        throw new Error('Use either --config-json or --config-file, not both.');
+    }
+
+    if (configJson) {
+        return parseJsonArg(configJson);
+    }
+
+    if (configFile) {
+        const resolved = path.resolve(configFile);
+        const raw = await fsPromises.readFile(resolved, 'utf-8');
+        return parseJsonArg(raw);
+    }
+
+    return undefined;
+}
+
+function printProviderRow(provider) {
+    const currentLabel = provider.isCurrent ? ' (current)' : '';
+    console.log(`- ${provider.id} | ${provider.appType} | ${provider.name}${currentLabel}`);
+}
+
+async function handleProvider(commandArgs) {
+    const subcommand = commandArgs[0];
+    if (!subcommand) {
+        throw new Error('Missing provider subcommand. Try: provider list|add|update|switch|delete|restore');
+    }
+
+    const core = await loadProviderCore();
+
+    switch (subcommand) {
+        case 'list': {
+            const appType = readArgValue(commandArgs.slice(1), '--app');
+            const providers = core.maskProviders(core.listProviders(appType || undefined));
+            if (providers.length === 0) {
+                console.log('No providers found.');
+                return;
+            }
+            providers.forEach(printProviderRow);
+            return;
+        }
+        case 'add': {
+            const rest = commandArgs.slice(1);
+            const appType = readArgValue(rest, '--app');
+            const name = readArgValue(rest, '--name');
+            if (!appType || !name) {
+                throw new Error('provider add requires --app and --name');
+            }
+            const config = await readProviderConfigFromArgs(rest);
+            if (!config) {
+                throw new Error('provider add requires --config-json or --config-file');
+            }
+            const provider = core.addProvider({ appType, name, config });
+            console.log(`Provider created: ${provider.id} (${provider.appType} / ${provider.name})`);
+            return;
+        }
+        case 'update': {
+            const rest = commandArgs.slice(1);
+            const id = readArgValue(rest, '--id');
+            const name = readArgValue(rest, '--name');
+            if (!id) {
+                throw new Error('provider update requires --id');
+            }
+            const config = await readProviderConfigFromArgs(rest);
+            if (name === null && config === undefined) {
+                throw new Error('provider update requires at least one of --name / --config-json / --config-file');
+            }
+            const provider = core.updateProvider({ id, name: name || undefined, config });
+            console.log(`Provider updated: ${provider.id} (${provider.name})`);
+            return;
+        }
+        case 'switch': {
+            const rest = commandArgs.slice(1);
+            const appType = readArgValue(rest, '--app');
+            const id = readArgValue(rest, '--id');
+            if (!appType || !id) {
+                throw new Error('provider switch requires --app and --id');
+            }
+            const result = await core.switchProvider({ appType, providerId: id });
+            console.log(
+                `Switched ${result.appType}: ${result.switchedFrom || 'none'} -> ${result.switchedTo} (backup #${result.backupId})`
+            );
+            return;
+        }
+        case 'delete': {
+            const rest = commandArgs.slice(1);
+            const id = readArgValue(rest, '--id');
+            if (!id) {
+                throw new Error('provider delete requires --id');
+            }
+            const deleted = core.deleteProvider(id);
+            console.log(deleted ? `Deleted provider: ${id}` : `Provider not found: ${id}`);
+            return;
+        }
+        case 'restore': {
+            const rest = commandArgs.slice(1);
+            const appType = readArgValue(rest, '--app');
+            if (!appType) {
+                throw new Error('provider restore requires --app');
+            }
+            const restored = await core.restoreBackup(appType);
+            console.log(`Restored ${appType} live config from backup #${restored.id}.`);
+            return;
+        }
+        default:
+            throw new Error(`Unknown provider subcommand: ${subcommand}`);
     }
 }
 
@@ -218,30 +458,7 @@ async function handleImport(commandArgs) {
         process.exit(1);
     }
 
-    let repoUrl = '';
-    let subdir = '';
-    let skillName = '';
-    let branch = branchArg || undefined;
-
-    if (url.includes('tree/')) {
-        const parts = url.split('tree/');
-        const base = parts[0];
-        const rest = parts[1];
-        const slashIndex = rest.indexOf('/');
-
-        if (slashIndex === -1) {
-            repoUrl = base.replace(/\/$/, '') + '.git';
-            branch = branch || rest;
-        } else {
-            repoUrl = base.replace(/\/$/, '') + '.git';
-            branch = branch || rest.substring(0, slashIndex);
-            subdir = rest.substring(slashIndex + 1);
-        }
-    } else {
-        repoUrl = url.endsWith('.git') ? url : url + '.git';
-    }
-
-    skillName = subdir ? path.basename(subdir) : path.basename(repoUrl, '.git');
+    const { repoUrl, repoWebUrl, subdir, skillName, branch } = parseSkillImportUrl(url, branchArg);
     const config = await loadConfig();
     const hubPath = expandHome(config.hubPath);
     const destPath = path.join(hubPath, skillName);
@@ -255,8 +472,19 @@ async function handleImport(commandArgs) {
         process.exit(1);
     }
 
-    await downloadRemoteSkill(repoUrl, subdir, destPath, branch);
-    console.log(`Successfully imported ${skillName}!`);
+    const downloadResult = await downloadRemoteSkill(repoUrl, subdir, destPath, branch);
+    const sourceUrl = buildGitSourceUrl(repoWebUrl, downloadResult.resolvedBranch, subdir);
+    await attachSkillImportMetadata(destPath, {
+        sourceRepo: repoWebUrl,
+        sourceUrl,
+        sourceBranch: downloadResult.resolvedBranch,
+        sourceSubdir: subdir,
+        sourceLastUpdated: downloadResult.lastUpdatedAt,
+        importedAt: new Date().toISOString(),
+    });
+
+    console.log(`Successfully imported ${skillName} from ${repoWebUrl}!`);
+    console.log(`Source last updated: ${downloadResult.lastUpdatedAt}`);
 }
 
 const CONFIG_PATH = path.join(os.homedir(), '.skills-hub', 'config.json');
@@ -371,6 +599,18 @@ async function downloadRemoteSkill(repoUrl, subdir, destPath, branch) {
                 : new Error('Failed to resolve default branch for remote repository.');
         }
 
+        const logArgs = ['log', '-1', '--format=%cI'];
+        if (subdir) {
+            logArgs.push('--', subdir);
+        }
+        let lastUpdatedAt = new Date().toISOString();
+        try {
+            const lastUpdatedAtRaw = await git.raw(logArgs);
+            lastUpdatedAt = lastUpdatedAtRaw.trim() || lastUpdatedAt;
+        } catch {
+            // Keep fallback timestamp to avoid import failure on metadata lookup issues.
+        }
+
         const sourceContentPath = subdir ? path.join(tempDir, subdir) : tempDir;
 
         if (!await fse.pathExists(sourceContentPath)) {
@@ -379,6 +619,10 @@ async function downloadRemoteSkill(repoUrl, subdir, destPath, branch) {
 
         await fse.ensureDir(path.dirname(destPath));
         await fse.copy(sourceContentPath, destPath);
+        return {
+            resolvedBranch: pulledBranch,
+            lastUpdatedAt,
+        };
     } finally {
         await fse.remove(tempDir);
     }

@@ -27,6 +27,8 @@
   "files": [
     "bin/skills-hub",
     "bin/prepare-standalone.js",
+    "lib/core/provider-core.mjs",
+    "lib/core/provider-core.d.ts",
     ".next/standalone",
     "README.md",
     "LICENSE"
@@ -42,8 +44,10 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@iarna/toml": "^2.2.5",
     "@tailwindcss/typography": "^0.5.19",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "better-sqlite3": "^12.6.2",
     "clsx": "^2.1.1",
     "fs-extra": "^11.3.3",
     "gray-matter": "^4.0.3",
