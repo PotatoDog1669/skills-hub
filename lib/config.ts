@@ -5,6 +5,26 @@ import os from 'os'
 const CONFIG_PATH = path.join(os.homedir(), '.skills-hub', 'config.json')
 const CONFIG_DIR = path.dirname(CONFIG_PATH)
 
+function normalizeAbsolutePath(inputPath: string): string {
+  const trimmed = inputPath.trim()
+  if (!trimmed) return ''
+
+  const expandedPath =
+    trimmed === '~' || trimmed.startsWith('~/') || trimmed.startsWith('~\\')
+      ? path.join(os.homedir(), trimmed.slice(1))
+      : trimmed
+
+  return path.resolve(expandedPath)
+}
+
+function dedupeNormalizedPaths(paths: string[] | undefined): string[] {
+  if (!paths || paths.length === 0) return []
+  const normalized = paths
+    .map((entry) => normalizeAbsolutePath(entry))
+    .filter((entry) => entry.length > 0)
+  return Array.from(new Set(normalized))
+}
+
 export interface AppConfig {
   hubPath: string
   projects: string[]
@@ -174,10 +194,16 @@ export async function getConfig(): Promise<AppConfig> {
 
     // 2. Add custom agents from user config
     const customAgents = userAgents.filter((ua: AgentConfig) => ua.isCustom)
+    const normalizedProjects = dedupeNormalizedPaths(userConfig.projects)
+    const normalizedScanRoots = userConfig.scanRoots
+      ? dedupeNormalizedPaths(userConfig.scanRoots)
+      : undefined
 
     return {
       ...DEFAULT_CONFIG,
       ...userConfig,
+      projects: normalizedProjects,
+      scanRoots: normalizedScanRoots ?? DEFAULT_CONFIG.scanRoots,
       agents: [...mergedAgents, ...customAgents],
     }
   } catch (error) {
@@ -193,29 +219,37 @@ export async function saveConfig(config: AppConfig): Promise<void> {
 
 export async function addProjectPath(projectPath: string): Promise<void> {
   const config = await getConfig()
-  if (!config.projects.includes(projectPath)) {
-    config.projects.push(projectPath)
+  const normalizedPath = normalizeAbsolutePath(projectPath)
+  if (!normalizedPath) return
+
+  if (!config.projects.includes(normalizedPath)) {
+    config.projects.push(normalizedPath)
     await saveConfig(config)
   }
 }
 
 export async function removeProjectPath(projectPath: string): Promise<void> {
   const config = await getConfig()
-  config.projects = config.projects.filter((p) => p !== projectPath)
+  const normalizedPath = normalizeAbsolutePath(projectPath)
+  config.projects = config.projects.filter((p) => p !== normalizedPath)
   await saveConfig(config)
 }
 
 export async function addScanRoot(rootPath: string): Promise<void> {
   const config = await getConfig()
-  if (!config.scanRoots.includes(rootPath)) {
-    config.scanRoots.push(rootPath)
+  const normalizedPath = normalizeAbsolutePath(rootPath)
+  if (!normalizedPath) return
+
+  if (!config.scanRoots.includes(normalizedPath)) {
+    config.scanRoots.push(normalizedPath)
     await saveConfig(config)
   }
 }
 
 export async function removeScanRoot(rootPath: string): Promise<void> {
   const config = await getConfig()
-  config.scanRoots = config.scanRoots.filter((p) => p !== rootPath)
+  const normalizedPath = normalizeAbsolutePath(rootPath)
+  config.scanRoots = config.scanRoots.filter((p) => p !== normalizedPath)
   await saveConfig(config)
 }
 

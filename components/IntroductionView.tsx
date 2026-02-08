@@ -23,7 +23,7 @@ const content = {
     ),
     projectsTitle: '2. Projects & Agents',
     projectsText:
-      'Skills Hub automatically scans your workspace for agent projects. You can also manually add projects. Within each project, you can manage skills for specific Agents (e.g., Codex, Claude Code).',
+      'Skills Hub automatically scans your workspace for Git repositories. You can also manually add Git projects. Within each project, you can manage skills for specific Agents (e.g., Codex, Claude Code).',
     guideTitle: 'Quick Start Guide',
     importTitle: 'Importing Skills',
     importText: (
@@ -60,11 +60,10 @@ const content = {
     manageProjectText: (
       <>
         <strong>Scanning:</strong> Configure &quot;Scan Roots&quot; (e.g. <code>~/workspace</code>)
-        in Settings. Skills Hub recursively scans up to 3 levels deep for projects containing valid
-        skill directories (e.g., <code>.agent/skills</code>, <code>.claude/skills</code>, etc.)
-        based on your active agents.
+        in Settings. Skills Hub recursively scans up to 5 levels deep for Git repositories. Projects
+        must be inside a Git work tree to be discovered automatically or added manually.
         <br />
-        <strong>Manual Import:</strong> You can also manually add a project path if it&apos;s
+        <strong>Manual Add:</strong> You can also manually add a Git project path if it&apos;s
         outside your scan roots.
       </>
     ),
@@ -100,7 +99,7 @@ const content = {
     ),
     projectsTitle: '2. 项目与 Agent',
     projectsText:
-      'Skills Hub 会自动扫描您的工作区以查找 Agent 项目。您也可以手动添加项目。在每个项目中，您可以为特定的 Agent（如 Codex, Claude Code）管理技能。',
+      'Skills Hub 会自动扫描您的工作区以查找 Git 仓库项目。您也可以手动添加 Git 项目。在每个项目中，您可以为特定的 Agent（如 Codex, Claude Code）管理技能。',
     guideTitle: '快速入门',
     importTitle: '导入技能',
     importText: (
@@ -136,10 +135,10 @@ const content = {
     manageProjectText: (
       <>
         <strong>自动扫描:</strong> 在设置中配置 &quot;Scan Roots&quot; (如 <code>~/workspace</code>
-        )。Skills Hub 会递归扫描（最多 3 层）并根据您启用的 Agent 查找包含有效技能目录（如{' '}
-        <code>.agent/skills</code>, <code>.claude/skills</code> 等）的项目。
+        )。Skills Hub 会递归扫描（最多 5 层）并仅识别 Git 仓库项目。
+        自动扫描与手动添加都要求目标路径位于 Git 工作树内。
         <br />
-        <strong>手动导入:</strong> 如果项目不在扫描路径下，您也可以手动添加项目路径.
+        <strong>手动添加:</strong> 如果项目不在扫描路径下，您也可以手动添加 Git 项目路径。
       </>
     ),
     marketTitle: '技能市场',

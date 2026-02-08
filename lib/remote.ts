@@ -3,6 +3,11 @@ import path from 'path'
 import simpleGit, { SimpleGit } from 'simple-git'
 import os from 'os'
 
+export interface DownloadRemoteSkillResult {
+  resolvedBranch: string
+  lastUpdatedAt: string
+}
+
 /**
  * Downloads a specific subdirectory from a remote git repository using sparse-checkout.
  * This avoids downloading the entire history and other directories.
@@ -27,7 +32,7 @@ export async function downloadRemoteSkill(
   subdir: string,
   destPath: string,
   branch?: string
-) {
+): Promise<DownloadRemoteSkillResult> {
   // Create a temporary directory for the operation
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'skills-hub-import-'))
   const git = simpleGit(tempDir)
@@ -75,6 +80,19 @@ export async function downloadRemoteSkill(
         : new Error('Failed to resolve default branch for remote repository.')
     }
 
+    // Capture the upstream update timestamp before moving files.
+    const logArgs = ['log', '-1', '--format=%cI']
+    if (subdir) {
+      logArgs.push('--', subdir)
+    }
+    let lastUpdatedAt = new Date().toISOString()
+    try {
+      const lastUpdatedAtRaw = await git.raw(logArgs)
+      lastUpdatedAt = lastUpdatedAtRaw.trim() || lastUpdatedAt
+    } catch {
+      // Keep fallback timestamp to avoid import failure on metadata lookup issues.
+    }
+
     // Move the target content to final destination
     // If subdir is specified, we only move that specific folder's content
     const sourceContentPath = subdir ? path.join(tempDir, subdir) : tempDir
@@ -89,6 +107,10 @@ export async function downloadRemoteSkill(
     await fs.copy(sourceContentPath, destPath)
 
     console.log('[Remote] Download complete.')
+    return {
+      resolvedBranch: pulledBranch,
+      lastUpdatedAt,
+    }
   } catch (error) {
     console.error('[Remote] Error downloading skill:', error)
     throw error

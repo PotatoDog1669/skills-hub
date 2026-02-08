@@ -2,9 +2,13 @@
 
 import styles from './SyncModal.module.css' // Reuse existing modal styles
 import { AppConfig, AgentConfig } from '@/lib/config'
-import { X, Plus, Terminal, Trash2 } from 'lucide-react'
+import { X, Plus, Terminal, Trash2, FolderOpen } from 'lucide-react'
 import { useState } from 'react'
-import { actionUpdateAgentConfig, actionRemoveAgentConfig } from '@/app/actions'
+import {
+  actionUpdateAgentConfig,
+  actionRemoveAgentConfig,
+  actionPickDirectory,
+} from '@/app/actions'
 
 interface AgentManagerModalProps {
   config: AppConfig
@@ -62,6 +66,13 @@ export function AgentManagerModal({ config, isOpen, onClose }: AgentManagerModal
       alert('Failed to add agent: ' + e)
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const handlePickGlobalPath = async () => {
+    const result = await actionPickDirectory({ title: 'Select Global Skills Folder' })
+    if (result.status === 'selected') {
+      setNewGlobalPath(result.path)
     }
   }
 
@@ -131,6 +142,14 @@ export function AgentManagerModal({ config, isOpen, onClose }: AgentManagerModal
                     value={newGlobalPath}
                     onChange={(e) => setNewGlobalPath(e.target.value)}
                   />
+                  <button
+                    type="button"
+                    onClick={handlePickGlobalPath}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs border rounded hover:bg-gray-100 text-gray-600"
+                  >
+                    <FolderOpen size={12} />
+                    Select Folder
+                  </button>
                   <input
                     className="w-full p-1.5 border rounded"
                     placeholder="Project Path (.agent/skills)"

@@ -1,11 +1,10 @@
 import fs from 'fs-extra'
 import path from 'path'
-import { getConfig } from './config'
 import os from 'os'
 
 /**
- * Scans directories within the given roots for project-level skill folders.
- * Returns a list of absolute paths to projects that contain skills.
+ * Scans directories within the given roots for git repositories.
+ * Returns a list of absolute paths to projects.
  *
  * Supports finding projects nested deeper (e.g. workspace/Org/Repo).
  */
@@ -14,10 +13,7 @@ export async function scanForProjects(roots: string[]): Promise<string[]> {
   const MAX_DEPTH = 5 // Allow deeper nested monorepos
   const IGNORED_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'out', '.next'])
 
-  const config = await getConfig()
-  const activeAgents = config.agents.filter((a) => a.enabled)
-
-  // Helper to verify if a folder is a valid project (has skill dirs)
+  // Helper to verify if a folder is a git repo root.
   async function isProject(dirPath: string): Promise<boolean> {
     // Explicitly exclude home directory
     // We compare resolved paths to be safe
@@ -27,12 +23,17 @@ export async function scanForProjects(roots: string[]): Promise<string[]> {
       return false
     }
 
-    for (const agent of activeAgents) {
-      if (await fs.pathExists(path.join(dirPath, agent.projectPath))) {
-        return true
-      }
+    const gitPath = path.join(dirPath, '.git')
+    if (!(await fs.pathExists(gitPath))) {
+      return false
     }
-    return false
+
+    try {
+      const stats = await fs.lstat(gitPath)
+      return stats.isDirectory() || stats.isFile()
+    } catch {
+      return false
+    }
   }
 
   // Recursive directory walker

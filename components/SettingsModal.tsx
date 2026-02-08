@@ -2,10 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import { AppConfig } from '@/lib/config'
-import { actionAddScanRoot, actionRemoveScanRoot, actionScanAndAddProjects } from '@/app/actions'
+import {
+  actionAddScannedProjects,
+  actionAddScanRoot,
+  actionPickDirectory,
+  actionRemoveScanRoot,
+  actionScanProjects,
+} from '@/app/actions'
 import { X, Trash2, Plus, Terminal, CheckCircle2, AlertCircle } from 'lucide-react'
 import styles from './SyncModal.module.css'
-import { useConfirm } from './ConfirmProvider'
+import { useConfirm } from '@/components/ConfirmProvider'
 
 interface SettingsModalProps {
   config: AppConfig
@@ -15,6 +21,9 @@ interface SettingsModalProps {
 
 export function SettingsModal({ config, isOpen, onClose }: SettingsModalProps) {
   const [isScanning, setIsScanning] = useState(false)
+  const [isAdding, setIsAdding] = useState(false)
+  const [scanCandidates, setScanCandidates] = useState<string[]>([])
+  const [selectedCandidates, setSelectedCandidates] = useState<string[]>([])
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const { confirm, prompt } = useConfirm()
 
@@ -22,20 +31,31 @@ export function SettingsModal({ config, isOpen, onClose }: SettingsModalProps) {
   useEffect(() => {
     if (isOpen) {
       setMessage(null)
+      setScanCandidates([])
+      setSelectedCandidates([])
     }
   }, [isOpen])
 
   if (!isOpen) return null
 
   const handleAddRoot = async () => {
-    const path = await prompt({
-      title: 'Add Workspace',
-      message: 'Enter absolute workspace path:',
-      placeholder: '/Users/username/workspace',
-      defaultValue: '/Users/liyaocong/workspace',
-    })
+    const result = await actionPickDirectory({ title: 'Select Workspace Folder' })
+    let selectedPath: string | null = null
 
-    if (path) await actionAddScanRoot(path)
+    if (result.status === 'selected') {
+      selectedPath = result.path
+    } else if (result.status === 'unsupported' || result.status === 'error') {
+      selectedPath = await prompt({
+        title: 'Add Workspace',
+        message: 'Enter absolute workspace path:',
+        placeholder: '/Users/username/workspace',
+        defaultValue: '/Users/liyaocong/workspace',
+      })
+    }
+
+    if (selectedPath) {
+      await actionAddScanRoot(selectedPath)
+    }
   }
 
   const handleRemoveRoot = async (path: string) => {
@@ -55,12 +75,61 @@ export function SettingsModal({ config, isOpen, onClose }: SettingsModalProps) {
     setIsScanning(true)
     setMessage(null)
     try {
-      const count = await actionScanAndAddProjects()
-      setMessage({ type: 'success', text: `Found ${count} new projects` })
+      const candidates = await actionScanProjects()
+      setScanCandidates(candidates)
+      setSelectedCandidates(candidates)
+      setMessage({
+        type: 'success',
+        text:
+          candidates.length > 0
+            ? `Found ${candidates.length} git projects. Select and add.`
+            : 'No new git projects found.',
+      })
     } catch (e) {
       setMessage({ type: 'error', text: 'Scan failed: ' + e })
     } finally {
       setIsScanning(false)
+    }
+  }
+
+  const toggleCandidate = (candidate: string) => {
+    setSelectedCandidates((prev) =>
+      prev.includes(candidate) ? prev.filter((item) => item !== candidate) : [...prev, candidate]
+    )
+  }
+
+  const handleSelectAllCandidates = () => {
+    if (selectedCandidates.length === scanCandidates.length) {
+      setSelectedCandidates([])
+      return
+    }
+    setSelectedCandidates(scanCandidates)
+  }
+
+  const handleAddSelectedProjects = async () => {
+    if (selectedCandidates.length === 0) {
+      setMessage({ type: 'error', text: 'Please select at least one project to add.' })
+      return
+    }
+
+    setIsAdding(true)
+    setMessage(null)
+
+    try {
+      const addedCount = await actionAddScannedProjects(selectedCandidates)
+      const remainingCandidates = scanCandidates.filter(
+        (item) => !selectedCandidates.includes(item)
+      )
+      setScanCandidates(remainingCandidates)
+      setSelectedCandidates([])
+      setMessage({
+        type: 'success',
+        text: `Added ${addedCount} project${addedCount === 1 ? '' : 's'}.`,
+      })
+    } catch (e) {
+      setMessage({ type: 'error', text: 'Failed to add selected projects: ' + e })
+    } finally {
+      setIsAdding(false)
     }
   }
 
@@ -144,10 +213,65 @@ export function SettingsModal({ config, isOpen, onClose }: SettingsModalProps) {
               {message.text}
             </div>
           )}
+
+          {/* Scan Results */}
+          {scanCandidates.length > 0 && (
+            <div className={styles.section}>
+              <div className={styles.label}>
+                <div>Scan Results</div>
+                <button
+                  onClick={handleSelectAllCandidates}
+                  className={styles.iconBtn}
+                  title={
+                    selectedCandidates.length === scanCandidates.length
+                      ? 'Unselect all'
+                      : 'Select all'
+                  }
+                >
+                  {selectedCandidates.length === scanCandidates.length ? 'Clear' : 'All'}
+                </button>
+              </div>
+              <div className={styles.list}>
+                {scanCandidates.map((candidate) => (
+                  <label
+                    key={candidate}
+                    className="w-full py-2 px-2 border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors gap-3"
+                    style={{ display: 'flex', alignItems: 'center' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedCandidates.includes(candidate)}
+                      onChange={() => toggleCandidate(candidate)}
+                    />
+                    <span
+                      className="text-sm font-mono"
+                      title={candidate}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {candidate}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className={styles.actions}>
+          <button
+            className={styles.btn}
+            onClick={handleAddSelectedProjects}
+            disabled={isAdding || selectedCandidates.length === 0}
+          >
+            {isAdding ? 'Adding...' : `Add Selected (${selectedCandidates.length})`}
+          </button>
           <button
             className={`${styles.btn} ${styles.btnPrimary}`}
             onClick={handleScan}

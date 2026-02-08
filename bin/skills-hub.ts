@@ -4,6 +4,11 @@ import { downloadRemoteSkill } from '../lib/remote'
 import { getConfig, AgentConfig } from '../lib/config'
 import fs from 'fs-extra'
 import os from 'os'
+import {
+  parseSkillImportUrl,
+  buildGitSourceUrl,
+  attachSkillImportMetadata,
+} from '../lib/import-skill'
 
 // Note: We need to ensure we run this with ts-node or compile it first.
 // For dev simplicity in this environment, we might need a wrapper.
@@ -116,41 +121,7 @@ async function handleImport(args: string[]) {
 
   console.log(`Processing import for: ${url}`)
 
-  // Rudimentary parsing of GitHub URLs for demo
-  // Expected format: https://github.com/owner/repo/tree/branch/subdir
-  // Or simplied: https://github.com/owner/repo (root)
-
-  let repoUrl = ''
-  let subdir = ''
-  let skillName = ''
-
-  if (url.includes('tree/')) {
-    const parts = url.split('tree/')
-    // parts[0] is https://github.com/owner/repo/
-    // parts[1] is branch/subdir/path
-    const base = parts[0]
-    const rest = parts[1]
-    const slashIndex = rest.indexOf('/')
-
-    if (slashIndex === -1) {
-      // branch only?
-      repoUrl = base.replace(/\/$/, '') // Remove trailing slash
-      // No subdir
-      // Warning: Importing root of branch without subdir might be huge
-      console.warn('Warning: Importing entire branch root.')
-    } else {
-      repoUrl = base.replace(/\/$/, '') + '.git'
-      // Remove branch from rest to get subdir
-      // Assumption: branch name is simple (no slashes), which is fragile but okay for v1
-      subdir = rest.substring(slashIndex + 1)
-    }
-  } else {
-    // Assume root repo
-    repoUrl = url.endsWith('.git') ? url : url + '.git'
-  }
-
-  // Determine destination
-  skillName = subdir ? path.basename(subdir) : path.basename(repoUrl, '.git')
+  const { repoUrl, repoWebUrl, subdir, skillName, branch } = parseSkillImportUrl(url)
   const config = await getConfig()
   const destPath = path.join(config.hubPath, skillName)
 
@@ -164,8 +135,19 @@ async function handleImport(args: string[]) {
     process.exit(1)
   }
 
-  await downloadRemoteSkill(repoUrl, subdir, destPath)
-  console.log(`Successfully imported ${skillName}!`)
+  const downloadResult = await downloadRemoteSkill(repoUrl, subdir, destPath, branch)
+  const sourceUrl = buildGitSourceUrl(repoWebUrl, downloadResult.resolvedBranch, subdir)
+  await attachSkillImportMetadata(destPath, {
+    sourceRepo: repoWebUrl,
+    sourceUrl,
+    sourceBranch: downloadResult.resolvedBranch,
+    sourceSubdir: subdir,
+    sourceLastUpdated: downloadResult.lastUpdatedAt,
+    importedAt: new Date().toISOString(),
+  })
+
+  console.log(`Successfully imported ${skillName} from ${repoWebUrl}!`)
+  console.log(`Source last updated: ${downloadResult.lastUpdatedAt}`)
 }
 
 async function handleList() {

@@ -10,6 +10,16 @@ export interface GitStatus {
   isSubDir?: boolean // If true, it's a subdir in a repo
 }
 
+export async function isInsideGitWorkTree(targetPath: string): Promise<boolean> {
+  try {
+    const git = simpleGit(targetPath)
+    const isInside = await git.revparse(['--is-inside-work-tree'])
+    return isInside.trim() === 'true'
+  } catch {
+    return false
+  }
+}
+
 /**
  * Checks git status for a skill path.
  * Supports both root git repos and subdirectories.
@@ -51,8 +61,7 @@ export async function checkGitStatus(skillPath: string): Promise<GitStatus> {
 
       try {
         // Use rev-parse to check if inside work tree
-        const isInside = await git.revparse(['--is-inside-work-tree'])
-        if (isInside.trim() === 'true') {
+        if (await isInsideGitWorkTree(skillPath)) {
           const remoteUrl = await git.listRemote(['--get-url'])
           return {
             isGit: true,
