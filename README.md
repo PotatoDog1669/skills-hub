@@ -25,6 +25,12 @@ Skills Hub supports synchronization with a wide range of AI agents, including An
 
 👉 **[View Full List of Supported Agents & Paths](./docs/supported-agents.md)**
 
+## Project Discovery
+
+- Auto scan is **Git-only**: Scan Roots only add directories that are inside a Git work tree.
+- Manual project add is also **Git-only**.
+- Path inputs now support a system folder picker first, with manual path input as fallback.
+
 ## Getting Started
 
 ### Prerequisites
@@ -53,6 +59,10 @@ skills-hub --no-open                       # Don't open browser automatically
 | `skills-hub import <url>`         | Import a skill from GitHub (supports branch: `--branch main`)                   |
 | `skills-hub sync --all`           | Sync Hub skills to all enabled agents (Antigravity, Claude, Cursor, etc.)       |
 | `skills-hub sync --target <name>` | Sync to a specific agent (e.g., `--target claude` syncs to `~/.claude/skills/`) |
+| `skills-hub provider list`        | List provider profiles (`claude`, `codex`, `gemini`)                            |
+| `skills-hub provider add ...`     | Add a provider with `--app --name --config-json` or `--config-file`             |
+| `skills-hub provider switch ...`  | Switch current provider with backfill + backup + atomic write                   |
+| `skills-hub provider restore ...` | Restore latest live config backup for an app                                    |
 
 ### Development
 

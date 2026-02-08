@@ -27,6 +27,12 @@ Skills Hub 支持同步到多种主流 AI 编码助手，包括 Antigravity, Cla
 
 👉 **[查看完整支持 Agent 列表及路径](./docs/supported-agents.md)**
 
+## 项目发现规则
+
+- 自动扫描为 **仅 Git**：`Scan Roots` 只会纳入位于 Git 工作树内的目录。
+- 手动添加项目也为 **仅 Git**。
+- 路径输入优先使用系统文件夹选择器，失败时可回退为手动输入路径。
+
 ## 快速开始
 
 ### 前提条件
@@ -55,6 +61,10 @@ skills-hub --no-open                       # 不自动打开浏览器
 | `skills-hub import <url>`         | 从 GitHub 导入技能（支持指定分支: `--branch main`）                    |
 | `skills-hub sync --all`           | 将 Hub 技能同步到所有已启用的 Agent (Antigravity, Claude, Cursor 等)   |
 | `skills-hub sync --target <name>` | 同步到特定 Agent（例如：`--target claude` 同步到 `~/.claude/skills/`） |
+| `skills-hub provider list`        | 查看 Provider 档案列表（`claude`、`codex`、`gemini`）                  |
+| `skills-hub provider add ...`     | 通过 `--app --name --config-json` 或 `--config-file` 新增 Provider     |
+| `skills-hub provider switch ...`  | 执行 Provider 切换（含 backfill + 备份 + 原子写）                      |
+| `skills-hub provider restore ...` | 按 app 恢复最近一次 live 配置备份                                      |
 
 ### 开发指南
 
