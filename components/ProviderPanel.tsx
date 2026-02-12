@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import TOML from '@iarna/toml'
 import {
   actionProviderAdd,
   actionProviderCaptureLive,
@@ -297,6 +298,10 @@ function getProfile(config: Record<string, unknown> | undefined): ProviderProfil
   return profile as ProviderProfile
 }
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
 function getProviderSubtitle(provider: ProviderRecord): string {
   const profile = getProfile(provider.config)
   if (profile.kind === 'official') {
@@ -315,7 +320,12 @@ function extractAppFormState(
     const auth = (config.auth || {}) as Record<string, unknown>
     const cfg = (config.configToml || {}) as Record<string, unknown>
     return {
-      apiKey: typeof auth.api_key === 'string' ? auth.api_key : '',
+      apiKey:
+        typeof auth.OPENAI_API_KEY === 'string'
+          ? auth.OPENAI_API_KEY
+          : typeof auth.api_key === 'string'
+            ? auth.api_key
+            : '',
       endpoint: typeof cfg.api_base_url === 'string' ? cfg.api_base_url : '',
       model: typeof cfg.model === 'string' ? cfg.model : '',
       accountName: profile.accountName || '',
@@ -382,6 +392,50 @@ function buildApiConfig(appType: AppType, form: AppProviderFormState, profile: P
   }
 }
 
+function buildCodexAuthJsonText(apiKey: string): string {
+  return `${JSON.stringify({ OPENAI_API_KEY: apiKey || '' }, null, 2)}\n`
+}
+
+function buildCodexConfigTomlText(endpoint: string, model: string): string {
+  const modelName = (model || 'gpt-5.2').trim() || 'gpt-5.2'
+  const baseUrl =
+    (endpoint || 'https://your-api-endpoint.com/v1').trim() || 'https://your-api-endpoint.com/v1'
+  return [
+    'model_provider = "custom"',
+    `model = "${modelName}"`,
+    'model_reasoning_effort = "high"',
+    'disable_response_storage = true',
+    '',
+    '[model_providers.custom]',
+    'name = "custom"',
+    `base_url = "${baseUrl}"`,
+    'wire_api = "responses"',
+    'requires_openai_auth = true',
+    '',
+  ].join('\n')
+}
+
+function stringifyCodexAuthJson(auth: unknown, fallbackApiKey: string): string {
+  if (!isObjectRecord(auth)) {
+    return buildCodexAuthJsonText(fallbackApiKey)
+  }
+  return `${JSON.stringify(auth, null, 2)}\n`
+}
+
+function stringifyCodexConfigToml(
+  configToml: unknown,
+  fallbackEndpoint: string,
+  fallbackModel: string
+): string {
+  if (!isObjectRecord(configToml)) {
+    return buildCodexConfigTomlText(fallbackEndpoint, fallbackModel)
+  }
+  const endpoint =
+    typeof configToml.api_base_url === 'string' ? configToml.api_base_url : fallbackEndpoint
+  const model = typeof configToml.model === 'string' ? configToml.model : fallbackModel
+  return buildCodexConfigTomlText(endpoint, model)
+}
+
 export function ProviderPanel({
   providers,
   universalProviders,
@@ -396,6 +450,11 @@ export function ProviderPanel({
   const [appProviderMode, setAppProviderMode] = useState<AppProviderMode>('api')
   const [selectedPresetKey, setSelectedPresetKey] = useState<string>('custom')
   const [appForm, setAppForm] = useState<AppProviderFormState>(() => emptyAppForm('codex'))
+  const [useCodexAdvancedConfig, setUseCodexAdvancedConfig] = useState(false)
+  const [codexAuthJsonText, setCodexAuthJsonText] = useState(() => buildCodexAuthJsonText(''))
+  const [codexConfigTomlText, setCodexConfigTomlText] = useState(() =>
+    buildCodexConfigTomlText('https://api.openai.com/v1', 'gpt-5.2')
+  )
   const [universalForm, setUniversalForm] = useState<UniversalProviderFormState>(() =>
     emptyUniversalForm()
   )
@@ -408,6 +467,17 @@ export function ProviderPanel({
   )
 
   const currentProvider = currentProviders[activeApp]
+
+  const patchAppForm = (patch: Partial<AppProviderFormState>) => {
+    setAppForm((prev) => {
+      const next = { ...prev, ...patch }
+      if (activeApp === 'codex' && appProviderMode === 'api' && !useCodexAdvancedConfig) {
+        setCodexAuthJsonText(buildCodexAuthJsonText(next.apiKey))
+        setCodexConfigTomlText(buildCodexConfigTomlText(next.endpoint, next.model))
+      }
+      return next
+    })
+  }
 
   const runMutation = (mutation: () => Promise<void>) => {
     startTransition(async () => {
@@ -428,7 +498,13 @@ export function ProviderPanel({
     setEditingProviderId(null)
     setSelectedPresetKey('custom')
     setAppProviderMode('api')
-    setAppForm(emptyAppForm(appType))
+    const nextForm = emptyAppForm(appType)
+    setAppForm(nextForm)
+    setUseCodexAdvancedConfig(false)
+    if (appType === 'codex') {
+      setCodexAuthJsonText(buildCodexAuthJsonText(nextForm.apiKey))
+      setCodexConfigTomlText(buildCodexConfigTomlText(nextForm.endpoint, nextForm.model))
+    }
   }
 
   const resetUniversalForm = () => {
@@ -480,11 +556,19 @@ export function ProviderPanel({
     setAppProviderMode(preset.mode)
     setAppForm((prev) => ({
       ...prev,
-      name: editingProviderId ? prev.name : prev.name || preset.label,
+      name: editingProviderId ? prev.name : preset.label,
       website: preset.website || prev.website,
       endpoint: preset.endpoint || prev.endpoint,
       model: preset.model || prev.model,
     }))
+
+    if (activeApp === 'codex') {
+      setUseCodexAdvancedConfig(false)
+      setCodexAuthJsonText(buildCodexAuthJsonText(''))
+      setCodexConfigTomlText(
+        buildCodexConfigTomlText(preset.endpoint || appForm.endpoint, preset.model || appForm.model)
+      )
+    }
   }
 
   const handleEditProvider = (provider: ProviderRecord) => {
@@ -498,11 +582,19 @@ export function ProviderPanel({
         setEditingProviderId(raw.id)
         setSelectedPresetKey(profile.vendorKey || 'custom')
         setAppProviderMode(profile.kind === 'official' ? 'official' : 'api')
-        setAppForm({
+        const nextForm = {
           ...emptyAppForm(provider.appType),
           name: raw.name,
           ...extracted,
-        })
+        }
+        setAppForm(nextForm)
+        if (provider.appType === 'codex') {
+          setUseCodexAdvancedConfig(false)
+          setCodexAuthJsonText(stringifyCodexAuthJson(raw.config.auth, nextForm.apiKey))
+          setCodexConfigTomlText(
+            stringifyCodexConfigToml(raw.config.configToml, nextForm.endpoint, nextForm.model)
+          )
+        }
         setDialogTab('app')
         setDialogOpen(true)
       } catch (error) {
@@ -523,6 +615,29 @@ export function ProviderPanel({
     if (appProviderMode === 'api' && !appForm.apiKey.trim()) {
       setMessage({ type: 'error', text: 'API 供应商必须填写 API Key。' })
       return
+    }
+
+    let parsedCodexAuth: Record<string, unknown> | null = null
+    let parsedCodexToml: Record<string, unknown> | null = null
+    if (appProviderMode === 'api' && activeApp === 'codex' && useCodexAdvancedConfig) {
+      try {
+        const parsedAuth = JSON.parse(codexAuthJsonText)
+        if (!isObjectRecord(parsedAuth)) {
+          throw new Error('auth.json 必须是 JSON 对象')
+        }
+        const parsedToml = TOML.parse(codexConfigTomlText)
+        if (!isObjectRecord(parsedToml)) {
+          throw new Error('config.toml 必须是 TOML 对象')
+        }
+        parsedCodexAuth = parsedAuth
+        parsedCodexToml = parsedToml
+      } catch (error) {
+        setMessage({
+          type: 'error',
+          text: error instanceof Error ? `高级配置解析失败: ${error.message}` : String(error),
+        })
+        return
+      }
     }
 
     runMutation(async () => {
@@ -566,12 +681,27 @@ export function ProviderPanel({
           vendorKey: selectedPresetKey === 'custom' ? undefined : selectedPresetKey,
           accountName: appForm.accountName.trim() || undefined,
           website: appForm.website.trim() || undefined,
-          endpoint: appForm.endpoint.trim() || undefined,
-          model: appForm.model.trim() || undefined,
+          endpoint:
+            (parsedCodexToml && typeof parsedCodexToml.api_base_url === 'string'
+              ? parsedCodexToml.api_base_url
+              : appForm.endpoint
+            ).trim() || undefined,
+          model:
+            (parsedCodexToml && typeof parsedCodexToml.model === 'string'
+              ? parsedCodexToml.model
+              : appForm.model
+            ).trim() || undefined,
           note: appForm.note.trim() || undefined,
         }
 
-        const nextConfig = buildApiConfig(activeApp, appForm, profile)
+        const nextConfig =
+          activeApp === 'codex' && useCodexAdvancedConfig && parsedCodexAuth && parsedCodexToml
+            ? {
+                _profile: profile,
+                auth: parsedCodexAuth,
+                configToml: parsedCodexToml,
+              }
+            : buildApiConfig(activeApp, appForm, profile)
 
         if (editingProviderId) {
           await actionProviderUpdate({
@@ -650,6 +780,28 @@ export function ProviderPanel({
       await actionUniversalProviderDelete(provider.id)
       setMessage({ type: 'success', text: '统一供应商已删除。' })
     })
+  }
+
+  const handleFormatCodexAdvanced = () => {
+    try {
+      const parsedAuth = JSON.parse(codexAuthJsonText)
+      if (!isObjectRecord(parsedAuth)) {
+        throw new Error('auth.json 必须是 JSON 对象')
+      }
+      const parsedToml = TOML.parse(codexConfigTomlText)
+      if (!isObjectRecord(parsedToml)) {
+        throw new Error('config.toml 必须是 TOML 对象')
+      }
+
+      setCodexAuthJsonText(`${JSON.stringify(parsedAuth, null, 2)}\n`)
+      setCodexConfigTomlText(TOML.stringify(parsedToml))
+      setMessage({ type: 'success', text: '已格式化 Codex 配置。' })
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: error instanceof Error ? `格式化失败: ${error.message}` : String(error),
+      })
+    }
   }
 
   const selectedPreset = APP_PRESETS[activeApp].find((preset) => preset.key === selectedPresetKey)
@@ -900,25 +1052,19 @@ export function ProviderPanel({
                   <div className="grid gap-3 md:grid-cols-2">
                     <input
                       value={appForm.name}
-                      onChange={(event) =>
-                        setAppForm((prev) => ({ ...prev, name: event.target.value }))
-                      }
+                      onChange={(event) => patchAppForm({ name: event.target.value })}
                       placeholder="供应商名称"
                       className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
                     />
                     <input
                       value={appForm.note}
-                      onChange={(event) =>
-                        setAppForm((prev) => ({ ...prev, note: event.target.value }))
-                      }
+                      onChange={(event) => patchAppForm({ note: event.target.value })}
                       placeholder="备注（可选）"
                       className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
                     />
                     <input
                       value={appForm.website}
-                      onChange={(event) =>
-                        setAppForm((prev) => ({ ...prev, website: event.target.value }))
-                      }
+                      onChange={(event) => patchAppForm({ website: event.target.value })}
                       placeholder="官网链接（可选）"
                       className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm md:col-span-2"
                     />
@@ -927,9 +1073,7 @@ export function ProviderPanel({
                       <>
                         <input
                           value={appForm.accountName}
-                          onChange={(event) =>
-                            setAppForm((prev) => ({ ...prev, accountName: event.target.value }))
-                          }
+                          onChange={(event) => patchAppForm({ accountName: event.target.value })}
                           placeholder="账号备注（如：公司账号）"
                           className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm md:col-span-2"
                         />
@@ -942,31 +1086,83 @@ export function ProviderPanel({
                       <>
                         <input
                           value={appForm.apiKey}
-                          onChange={(event) =>
-                            setAppForm((prev) => ({ ...prev, apiKey: event.target.value }))
-                          }
+                          onChange={(event) => patchAppForm({ apiKey: event.target.value })}
                           placeholder="API Key"
                           className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm md:col-span-2"
                         />
                         <input
                           value={appForm.endpoint}
-                          onChange={(event) =>
-                            setAppForm((prev) => ({ ...prev, endpoint: event.target.value }))
-                          }
+                          onChange={(event) => patchAppForm({ endpoint: event.target.value })}
                           placeholder="API 请求地址"
                           className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
                         />
                         <input
                           value={appForm.model}
-                          onChange={(event) =>
-                            setAppForm((prev) => ({ ...prev, model: event.target.value }))
-                          }
+                          onChange={(event) => patchAppForm({ model: event.target.value })}
                           placeholder="模型名称"
                           className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm"
                         />
                         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 md:col-span-2">
                           填写兼容 OpenAI Responses 格式的 API 请求地址。
                         </div>
+
+                        {activeApp === 'codex' && (
+                          <div className="md:col-span-2 space-y-3 rounded-lg border border-gray-200 p-4">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-sm font-medium">Codex 原始配置</div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setUseCodexAdvancedConfig((prev) => !prev)}
+                                  className="rounded border border-gray-200 px-2.5 py-1 text-xs hover:bg-gray-50"
+                                >
+                                  {useCodexAdvancedConfig
+                                    ? '关闭高级配置'
+                                    : '编辑 auth.json/config.toml'}
+                                </button>
+                                {useCodexAdvancedConfig && (
+                                  <button
+                                    type="button"
+                                    onClick={handleFormatCodexAdvanced}
+                                    className="rounded border border-gray-200 px-2.5 py-1 text-xs hover:bg-gray-50"
+                                  >
+                                    格式化
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {useCodexAdvancedConfig && (
+                              <div className="space-y-3">
+                                <div className="space-y-1">
+                                  <div className="text-xs font-medium text-gray-600">
+                                    auth.json (JSON) *
+                                  </div>
+                                  <textarea
+                                    value={codexAuthJsonText}
+                                    onChange={(event) => setCodexAuthJsonText(event.target.value)}
+                                    className="min-h-28 w-full rounded-md border border-gray-200 bg-slate-50 px-3 py-2 text-xs font-mono"
+                                    spellCheck={false}
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <div className="text-xs font-medium text-gray-600">
+                                    config.toml (TOML)
+                                  </div>
+                                  <textarea
+                                    value={codexConfigTomlText}
+                                    onChange={(event) => setCodexConfigTomlText(event.target.value)}
+                                    className="min-h-44 w-full rounded-md border border-gray-200 bg-slate-50 px-3 py-2 text-xs font-mono"
+                                    spellCheck={false}
+                                  />
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  开启后会以这里的 JSON/TOML 内容为准写入 Provider。
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
