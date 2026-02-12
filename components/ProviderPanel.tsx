@@ -362,7 +362,7 @@ function buildApiConfig(appType: AppType, form: AppProviderFormState, profile: P
     return {
       _profile: profile,
       auth: {
-        api_key: form.apiKey,
+        OPENAI_API_KEY: form.apiKey,
       },
       configToml: {
         model: form.model,
