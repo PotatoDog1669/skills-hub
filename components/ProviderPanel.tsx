@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import TOML from '@iarna/toml'
 import {
@@ -302,12 +302,93 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
+function sanitizeCodexProviderKey(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return normalized || 'custom'
+}
+
+function normalizeTomlTextWithEol(value: string): string {
+  return value.endsWith('\n') ? value : `${value}\n`
+}
+
+function getCodexEndpointFromTomlObject(value: Record<string, unknown>): string {
+  if (typeof value.api_base_url === 'string') return value.api_base_url
+  if (typeof value.base_url === 'string') return value.base_url
+
+  const modelProviders = value.model_providers
+  if (isObjectRecord(modelProviders)) {
+    const preferredProvider =
+      typeof value.model_provider === 'string' ? value.model_provider : undefined
+
+    if (preferredProvider && isObjectRecord(modelProviders[preferredProvider])) {
+      const preferredConfig = modelProviders[preferredProvider] as Record<string, unknown>
+      if (typeof preferredConfig.base_url === 'string') return preferredConfig.base_url
+    }
+
+    for (const config of Object.values(modelProviders)) {
+      if (isObjectRecord(config) && typeof config.base_url === 'string') {
+        return config.base_url
+      }
+    }
+  }
+
+  return ''
+}
+
+function parseCodexTomlInfo(
+  configValue: unknown,
+  fallbackEndpoint: string,
+  fallbackModel: string
+): { endpoint: string; model: string; configText: string } {
+  let parsed: Record<string, unknown> | null = null
+  let configText = ''
+
+  if (typeof configValue === 'string') {
+    configText = configValue
+    try {
+      const parsedToml = TOML.parse(configValue)
+      if (isObjectRecord(parsedToml)) {
+        parsed = parsedToml
+      }
+    } catch {
+      // Keep raw text; endpoint/model fallback below.
+    }
+  } else if (isObjectRecord(configValue)) {
+    parsed = configValue
+    configText = TOML.stringify(configValue as Parameters<typeof TOML.stringify>[0])
+  }
+
+  const endpoint = parsed ? getCodexEndpointFromTomlObject(parsed) : ''
+  const model = parsed && typeof parsed.model === 'string' ? parsed.model : ''
+
+  return {
+    endpoint: endpoint || fallbackEndpoint,
+    model: model || fallbackModel,
+    configText: configText.trim() ? normalizeTomlTextWithEol(configText) : '',
+  }
+}
+
 function getProviderSubtitle(provider: ProviderRecord): string {
   const profile = getProfile(provider.config)
-  if (profile.kind === 'official') {
-    return profile.accountName || profile.note || 'Official account'
+  const looksOfficialByName = provider.name.toLowerCase().includes('official')
+  const auth = isObjectRecord(provider.config?.auth)
+    ? (provider.config.auth as Record<string, unknown>)
+    : null
+  const looksOfficialByAuth =
+    Boolean(auth && isObjectRecord(auth.tokens)) || Boolean(auth && auth.auth_mode === 'chatgpt')
+  const isOfficial = profile.kind === 'official' || looksOfficialByName || looksOfficialByAuth
+
+  if (isOfficial) {
+    if (profile.accountName && profile.note) {
+      return `${profile.accountName} · ${profile.note}`
+    }
+    return profile.note || profile.accountName || 'Official account'
   }
-  return profile.endpoint || profile.website || profile.note || provider.id
+  return profile.note || profile.endpoint || profile.website || ''
 }
 
 function extractAppFormState(
@@ -318,7 +399,11 @@ function extractAppFormState(
 
   if (appType === 'codex') {
     const auth = (config.auth || {}) as Record<string, unknown>
-    const cfg = (config.configToml || {}) as Record<string, unknown>
+    const tomlInfo = parseCodexTomlInfo(
+      config.config ?? config.configToml,
+      '',
+      typeof profile.model === 'string' ? profile.model : ''
+    )
     return {
       apiKey:
         typeof auth.OPENAI_API_KEY === 'string'
@@ -326,8 +411,8 @@ function extractAppFormState(
           : typeof auth.api_key === 'string'
             ? auth.api_key
             : '',
-      endpoint: typeof cfg.api_base_url === 'string' ? cfg.api_base_url : '',
-      model: typeof cfg.model === 'string' ? cfg.model : '',
+      endpoint: tomlInfo.endpoint,
+      model: tomlInfo.model,
       accountName: profile.accountName || '',
       website: profile.website || '',
       note: profile.note || '',
@@ -357,17 +442,19 @@ function extractAppFormState(
   }
 }
 
-function buildApiConfig(appType: AppType, form: AppProviderFormState, profile: ProviderProfile) {
+function buildApiConfig(
+  appType: AppType,
+  form: AppProviderFormState,
+  profile: ProviderProfile,
+  codexProviderKey = 'custom'
+) {
   if (appType === 'codex') {
     return {
       _profile: profile,
       auth: {
-        api_key: form.apiKey,
+        OPENAI_API_KEY: form.apiKey,
       },
-      configToml: {
-        model: form.model,
-        ...(form.endpoint.trim() ? { api_base_url: form.endpoint.trim() } : {}),
-      },
+      config: buildCodexConfigTomlText(form.endpoint, form.model, codexProviderKey),
     }
   }
 
@@ -396,18 +483,19 @@ function buildCodexAuthJsonText(apiKey: string): string {
   return `${JSON.stringify({ OPENAI_API_KEY: apiKey || '' }, null, 2)}\n`
 }
 
-function buildCodexConfigTomlText(endpoint: string, model: string): string {
+function buildCodexConfigTomlText(endpoint: string, model: string, providerKey = 'custom'): string {
   const modelName = (model || 'gpt-5.2').trim() || 'gpt-5.2'
   const baseUrl =
     (endpoint || 'https://your-api-endpoint.com/v1').trim() || 'https://your-api-endpoint.com/v1'
+  const normalizedProviderKey = sanitizeCodexProviderKey(providerKey)
   return [
-    'model_provider = "custom"',
+    `model_provider = "${normalizedProviderKey}"`,
     `model = "${modelName}"`,
     'model_reasoning_effort = "high"',
     'disable_response_storage = true',
     '',
-    '[model_providers.custom]',
-    'name = "custom"',
+    `[model_providers.${normalizedProviderKey}]`,
+    `name = "${normalizedProviderKey}"`,
     `base_url = "${baseUrl}"`,
     'wire_api = "responses"',
     'requires_openai_auth = true',
@@ -423,17 +511,15 @@ function stringifyCodexAuthJson(auth: unknown, fallbackApiKey: string): string {
 }
 
 function stringifyCodexConfigToml(
-  configToml: unknown,
+  configValue: unknown,
   fallbackEndpoint: string,
   fallbackModel: string
 ): string {
-  if (!isObjectRecord(configToml)) {
-    return buildCodexConfigTomlText(fallbackEndpoint, fallbackModel)
+  const info = parseCodexTomlInfo(configValue, fallbackEndpoint, fallbackModel)
+  if (info.configText) {
+    return info.configText
   }
-  const endpoint =
-    typeof configToml.api_base_url === 'string' ? configToml.api_base_url : fallbackEndpoint
-  const model = typeof configToml.model === 'string' ? configToml.model : fallbackModel
-  return buildCodexConfigTomlText(endpoint, model)
+  return buildCodexConfigTomlText(fallbackEndpoint, fallbackModel)
 }
 
 export function ProviderPanel({
@@ -467,13 +553,22 @@ export function ProviderPanel({
   )
 
   const currentProvider = currentProviders[activeApp]
+  const currentProviderSubtitle = currentProvider ? getProviderSubtitle(currentProvider) : ''
+
+  useEffect(() => {
+    if (!message || message.type !== 'success') return
+    const timer = window.setTimeout(() => setMessage(null), 2500)
+    return () => window.clearTimeout(timer)
+  }, [message])
 
   const patchAppForm = (patch: Partial<AppProviderFormState>) => {
     setAppForm((prev) => {
       const next = { ...prev, ...patch }
       if (activeApp === 'codex' && appProviderMode === 'api' && !useCodexAdvancedConfig) {
         setCodexAuthJsonText(buildCodexAuthJsonText(next.apiKey))
-        setCodexConfigTomlText(buildCodexConfigTomlText(next.endpoint, next.model))
+        setCodexConfigTomlText(
+          buildCodexConfigTomlText(next.endpoint, next.model, selectedPresetKey)
+        )
       }
       return next
     })
@@ -503,7 +598,7 @@ export function ProviderPanel({
     setUseCodexAdvancedConfig(false)
     if (appType === 'codex') {
       setCodexAuthJsonText(buildCodexAuthJsonText(nextForm.apiKey))
-      setCodexConfigTomlText(buildCodexConfigTomlText(nextForm.endpoint, nextForm.model))
+      setCodexConfigTomlText(buildCodexConfigTomlText(nextForm.endpoint, nextForm.model, 'custom'))
     }
   }
 
@@ -519,6 +614,7 @@ export function ProviderPanel({
   }
 
   const openCreateDialog = () => {
+    setMessage(null)
     setDialogTab('app')
     resetAppForm(activeApp)
     resetUniversalForm()
@@ -554,21 +650,23 @@ export function ProviderPanel({
   const handleApplyPreset = (preset: AppProviderPreset) => {
     setSelectedPresetKey(preset.key)
     setAppProviderMode(preset.mode)
-    setAppForm((prev) => ({
-      ...prev,
-      name: editingProviderId ? prev.name : preset.label,
-      website: preset.website || prev.website,
-      endpoint: preset.endpoint || prev.endpoint,
-      model: preset.model || prev.model,
-    }))
+    setAppForm((prev) => {
+      const next = {
+        ...prev,
+        name: editingProviderId ? prev.name : preset.label,
+        website: preset.website || prev.website,
+        endpoint: preset.endpoint || prev.endpoint,
+        model: preset.model || prev.model,
+      }
 
-    if (activeApp === 'codex') {
-      setUseCodexAdvancedConfig(false)
-      setCodexAuthJsonText(buildCodexAuthJsonText(''))
-      setCodexConfigTomlText(
-        buildCodexConfigTomlText(preset.endpoint || appForm.endpoint, preset.model || appForm.model)
-      )
-    }
+      if (activeApp === 'codex') {
+        setUseCodexAdvancedConfig(false)
+        setCodexAuthJsonText(buildCodexAuthJsonText(next.apiKey))
+        setCodexConfigTomlText(buildCodexConfigTomlText(next.endpoint, next.model, preset.key))
+      }
+
+      return next
+    })
   }
 
   const handleEditProvider = (provider: ProviderRecord) => {
@@ -592,7 +690,11 @@ export function ProviderPanel({
           setUseCodexAdvancedConfig(false)
           setCodexAuthJsonText(stringifyCodexAuthJson(raw.config.auth, nextForm.apiKey))
           setCodexConfigTomlText(
-            stringifyCodexConfigToml(raw.config.configToml, nextForm.endpoint, nextForm.model)
+            stringifyCodexConfigToml(
+              raw.config.config ?? raw.config.configToml,
+              nextForm.endpoint,
+              nextForm.model
+            )
           )
         }
         setDialogTab('app')
@@ -607,6 +709,8 @@ export function ProviderPanel({
   }
 
   const handleSubmitAppProvider = () => {
+    const isEditingProvider = Boolean(editingProviderId)
+
     if (!appForm.name.trim()) {
       setMessage({ type: 'error', text: '供应商名称不能为空。' })
       return
@@ -618,8 +722,11 @@ export function ProviderPanel({
     }
 
     let parsedCodexAuth: Record<string, unknown> | null = null
-    let parsedCodexToml: Record<string, unknown> | null = null
-    if (appProviderMode === 'api' && activeApp === 'codex' && useCodexAdvancedConfig) {
+    let parsedCodexTomlMeta: { endpoint: string; model: string } | null = null
+    let parsedCodexConfigText: string | null = null
+    const shouldParseCodexRawConfig =
+      activeApp === 'codex' && (useCodexAdvancedConfig || isEditingProvider)
+    if (shouldParseCodexRawConfig) {
       try {
         const parsedAuth = JSON.parse(codexAuthJsonText)
         if (!isObjectRecord(parsedAuth)) {
@@ -630,7 +737,12 @@ export function ProviderPanel({
           throw new Error('config.toml 必须是 TOML 对象')
         }
         parsedCodexAuth = parsedAuth
-        parsedCodexToml = parsedToml
+        const parsedInfo = parseCodexTomlInfo(parsedToml, appForm.endpoint, appForm.model)
+        parsedCodexTomlMeta = {
+          endpoint: parsedInfo.endpoint,
+          model: parsedInfo.model,
+        }
+        parsedCodexConfigText = normalizeTomlTextWithEol(codexConfigTomlText)
       } catch (error) {
         setMessage({
           type: 'error',
@@ -645,20 +757,27 @@ export function ProviderPanel({
         if (editingProviderId) {
           const raw = await actionProviderGetRaw(editingProviderId)
           const existingProfile = getProfile(raw.config)
+          const nextOfficialConfig: Record<string, unknown> = {
+            ...raw.config,
+            _profile: {
+              ...existingProfile,
+              kind: 'official',
+              vendorKey: selectedPresetKey === 'custom' ? undefined : selectedPresetKey,
+              accountName: appForm.accountName.trim() || undefined,
+              website: appForm.website.trim() || undefined,
+              note: appForm.note.trim() || undefined,
+            },
+          }
+
+          if (activeApp === 'codex' && parsedCodexAuth && parsedCodexConfigText) {
+            nextOfficialConfig.auth = parsedCodexAuth
+            nextOfficialConfig.config = parsedCodexConfigText
+          }
+
           await actionProviderUpdate({
             id: editingProviderId,
             name: appForm.name.trim(),
-            config: {
-              ...raw.config,
-              _profile: {
-                ...existingProfile,
-                kind: 'official',
-                vendorKey: selectedPresetKey === 'custom' ? undefined : selectedPresetKey,
-                accountName: appForm.accountName.trim() || undefined,
-                website: appForm.website.trim() || undefined,
-                note: appForm.note.trim() || undefined,
-              },
-            },
+            config: nextOfficialConfig,
           })
           setMessage({ type: 'success', text: '官方账号已更新。' })
         } else {
@@ -681,27 +800,22 @@ export function ProviderPanel({
           vendorKey: selectedPresetKey === 'custom' ? undefined : selectedPresetKey,
           accountName: appForm.accountName.trim() || undefined,
           website: appForm.website.trim() || undefined,
-          endpoint:
-            (parsedCodexToml && typeof parsedCodexToml.api_base_url === 'string'
-              ? parsedCodexToml.api_base_url
-              : appForm.endpoint
-            ).trim() || undefined,
-          model:
-            (parsedCodexToml && typeof parsedCodexToml.model === 'string'
-              ? parsedCodexToml.model
-              : appForm.model
-            ).trim() || undefined,
+          endpoint: (parsedCodexTomlMeta?.endpoint || appForm.endpoint).trim() || undefined,
+          model: (parsedCodexTomlMeta?.model || appForm.model).trim() || undefined,
           note: appForm.note.trim() || undefined,
         }
 
         const nextConfig =
-          activeApp === 'codex' && useCodexAdvancedConfig && parsedCodexAuth && parsedCodexToml
+          activeApp === 'codex' &&
+          (useCodexAdvancedConfig || isEditingProvider) &&
+          parsedCodexAuth &&
+          parsedCodexConfigText
             ? {
                 _profile: profile,
                 auth: parsedCodexAuth,
-                configToml: parsedCodexToml,
+                config: parsedCodexConfigText,
               }
-            : buildApiConfig(activeApp, appForm, profile)
+            : buildApiConfig(activeApp, appForm, profile, selectedPresetKey)
 
         if (editingProviderId) {
           await actionProviderUpdate({
@@ -805,6 +919,11 @@ export function ProviderPanel({
   }
 
   const selectedPreset = APP_PRESETS[activeApp].find((preset) => preset.key === selectedPresetKey)
+  const isEditingProvider = Boolean(editingProviderId)
+  const showAppDialogContent = isEditingProvider || dialogTab === 'app'
+  const shouldShowCodexRawSection =
+    activeApp === 'codex' && (isEditingProvider || appProviderMode === 'api')
+  const shouldShowCodexRawEditors = isEditingProvider || useCodexAdvancedConfig
 
   return (
     <div className="space-y-6">
@@ -851,8 +970,8 @@ export function ProviderPanel({
       <div className="rounded-2xl border border-gray-200 bg-white p-4">
         <div className="text-sm text-gray-500">当前供应商</div>
         <div className="mt-1 text-lg font-semibold">{currentProvider?.name || '未选择'}</div>
-        {currentProvider && (
-          <div className="mt-1 text-sm text-gray-500">{getProviderSubtitle(currentProvider)}</div>
+        {currentProvider && currentProviderSubtitle && (
+          <div className="mt-1 text-sm text-gray-500">{currentProviderSubtitle}</div>
         )}
       </div>
 
@@ -872,52 +991,55 @@ export function ProviderPanel({
             当前 {APP_LABEL[activeApp]} 还没有可切换供应商。
           </div>
         ) : (
-          appProviders.map((provider) => (
-            <div
-              key={provider.id}
-              className={`rounded-2xl border p-4 bg-white ${
-                provider.isCurrent ? 'border-blue-300 bg-blue-50/40' : 'border-gray-200'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2 text-2xl font-semibold leading-none">
-                    <span className="text-base font-semibold">{provider.name}</span>
-                    {provider.isCurrent && (
-                      <span className="inline-flex items-center gap-1 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">
-                        <Sparkles size={12} /> current
-                      </span>
-                    )}
+          appProviders.map((provider) => {
+            const subtitle = getProviderSubtitle(provider)
+            return (
+              <div
+                key={provider.id}
+                className={`rounded-2xl border p-4 bg-white ${
+                  provider.isCurrent ? 'border-blue-300 bg-blue-50/40' : 'border-gray-200'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-2xl font-semibold leading-none">
+                      <span className="text-base font-semibold">{provider.name}</span>
+                      {provider.isCurrent && (
+                        <span className="inline-flex items-center gap-1 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">
+                          <Sparkles size={12} /> current
+                        </span>
+                      )}
+                    </div>
+                    {subtitle && <div className="mt-1 text-sm text-gray-600">{subtitle}</div>}
                   </div>
-                  <div className="mt-1 text-sm text-gray-600">{getProviderSubtitle(provider)}</div>
-                </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleSwitchProvider(provider.id)}
-                    disabled={isPending || provider.isCurrent}
-                    className="rounded border border-gray-200 px-2.5 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    切换
-                  </button>
-                  <button
-                    onClick={() => handleEditProvider(provider)}
-                    disabled={isPending}
-                    className="rounded border border-gray-200 px-2.5 py-1 text-xs hover:bg-gray-50"
-                  >
-                    编辑
-                  </button>
-                  <button
-                    onClick={() => handleDeleteProvider(provider.id, provider.name)}
-                    disabled={isPending}
-                    className="rounded border border-red-200 px-2.5 py-1 text-xs text-red-600 hover:bg-red-50"
-                  >
-                    删除
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleSwitchProvider(provider.id)}
+                      disabled={isPending || provider.isCurrent}
+                      className="rounded border border-gray-200 px-2.5 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      切换
+                    </button>
+                    <button
+                      onClick={() => handleEditProvider(provider)}
+                      disabled={isPending}
+                      className="rounded border border-gray-200 px-2.5 py-1 text-xs hover:bg-gray-50"
+                    >
+                      编辑
+                    </button>
+                    <button
+                      onClick={() => handleDeleteProvider(provider.id, provider.name)}
+                      disabled={isPending}
+                      className="rounded border border-red-200 px-2.5 py-1 text-xs text-red-600 hover:bg-red-50"
+                    >
+                      删除
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
+            )
+          })
         )}
       </div>
 
@@ -997,7 +1119,9 @@ export function ProviderPanel({
                   <ArrowLeft size={18} />
                 </button>
                 <div>
-                  <div className="text-3xl font-semibold">添加新供应商</div>
+                  <div className="text-3xl font-semibold">
+                    {isEditingProvider ? '编辑供应商' : '添加新供应商'}
+                  </div>
                   <div className="text-sm text-gray-500">当前应用: {APP_LABEL[activeApp]}</div>
                 </div>
               </div>
@@ -1016,50 +1140,54 @@ export function ProviderPanel({
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-2 rounded-xl bg-gray-100 p-1">
-                <button
-                  onClick={() => setDialogTab('app')}
-                  className={`rounded-lg px-3 py-2 text-sm ${
-                    dialogTab === 'app' ? 'bg-[#2583e7] text-white' : 'text-gray-500'
-                  }`}
-                >
-                  {APP_LABEL[activeApp]} 供应商
-                </button>
-                <button
-                  onClick={() => setDialogTab('universal')}
-                  className={`rounded-lg px-3 py-2 text-sm ${
-                    dialogTab === 'universal' ? 'bg-[#2583e7] text-white' : 'text-gray-500'
-                  }`}
-                >
-                  统一供应商
-                </button>
-              </div>
+              {!isEditingProvider && (
+                <div className="grid grid-cols-2 gap-2 rounded-xl bg-gray-100 p-1">
+                  <button
+                    onClick={() => setDialogTab('app')}
+                    className={`rounded-lg px-3 py-2 text-sm ${
+                      dialogTab === 'app' ? 'bg-[#2583e7] text-white' : 'text-gray-500'
+                    }`}
+                  >
+                    {APP_LABEL[activeApp]} 供应商
+                  </button>
+                  <button
+                    onClick={() => setDialogTab('universal')}
+                    className={`rounded-lg px-3 py-2 text-sm ${
+                      dialogTab === 'universal' ? 'bg-[#2583e7] text-white' : 'text-gray-500'
+                    }`}
+                  >
+                    统一供应商
+                  </button>
+                </div>
+              )}
 
-              {dialogTab === 'app' ? (
+              {showAppDialogContent ? (
                 <div className="space-y-4 rounded-xl border border-gray-200 p-5">
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium">预设供应商</div>
-                    <div className="flex flex-wrap gap-2">
-                      {APP_PRESETS[activeApp].map((preset) => (
-                        <button
-                          key={preset.key}
-                          onClick={() => handleApplyPreset(preset)}
-                          className={`rounded-xl px-4 py-2 text-sm border ${
-                            selectedPresetKey === preset.key
-                              ? 'border-gray-800 bg-gray-900 text-white'
-                              : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'
-                          }`}
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                    </div>
-                    {selectedPreset?.description && (
-                      <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                        {selectedPreset.description}
+                  {!isEditingProvider && (
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">预设供应商</div>
+                      <div className="flex flex-wrap gap-2">
+                        {APP_PRESETS[activeApp].map((preset) => (
+                          <button
+                            key={preset.key}
+                            onClick={() => handleApplyPreset(preset)}
+                            className={`rounded-xl px-4 py-2 text-sm border ${
+                              selectedPresetKey === preset.key
+                                ? 'border-gray-800 bg-gray-900 text-white'
+                                : 'border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100'
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
                       </div>
-                    )}
-                  </div>
+                      {selectedPreset?.description && (
+                        <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                          {selectedPreset.description}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div className="grid gap-3 md:grid-cols-2">
                     <input
@@ -1083,15 +1211,26 @@ export function ProviderPanel({
 
                     {appProviderMode === 'official' ? (
                       <>
-                        <input
-                          value={appForm.accountName}
-                          onChange={(event) => patchAppForm({ accountName: event.target.value })}
-                          placeholder="账号备注（如：公司账号）"
-                          className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm md:col-span-2"
-                        />
+                        {!(isEditingProvider && activeApp === 'codex') && (
+                          <input
+                            value={appForm.accountName}
+                            onChange={(event) => patchAppForm({ accountName: event.target.value })}
+                            placeholder="账号备注（如：公司账号）"
+                            className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm md:col-span-2"
+                          />
+                        )}
+                        {isEditingProvider && activeApp === 'codex' && (
+                          <input
+                            value=""
+                            disabled
+                            placeholder="官方无需填写 API Key，直接保存即可"
+                            className="w-full rounded-md border border-gray-200 bg-gray-100 px-3 py-2 text-sm text-gray-500 md:col-span-2"
+                          />
+                        )}
                         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 md:col-span-2">
-                          请先在本机完成 {APP_LABEL[activeApp]} 登录，再点击添加以捕获当前 live
-                          配置。
+                          {isEditingProvider
+                            ? `当前为${APP_LABEL[activeApp]}官方供应商编辑模式，保存后会更新该账号配置。`
+                            : `请先在本机完成 ${APP_LABEL[activeApp]} 登录，再点击添加以捕获当前 live 配置。`}
                         </div>
                       </>
                     ) : (
@@ -1117,65 +1256,73 @@ export function ProviderPanel({
                         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 md:col-span-2">
                           填写兼容 OpenAI Responses 格式的 API 请求地址。
                         </div>
+                      </>
+                    )}
 
-                        {activeApp === 'codex' && (
-                          <div className="md:col-span-2 space-y-3 rounded-lg border border-gray-200 p-4">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="text-sm font-medium">Codex 原始配置</div>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => setUseCodexAdvancedConfig((prev) => !prev)}
-                                  className="rounded border border-gray-200 px-2.5 py-1 text-xs hover:bg-gray-50"
-                                >
-                                  {useCodexAdvancedConfig
-                                    ? '关闭高级配置'
-                                    : '编辑 auth.json/config.toml'}
-                                </button>
-                                {useCodexAdvancedConfig && (
-                                  <button
-                                    type="button"
-                                    onClick={handleFormatCodexAdvanced}
-                                    className="rounded border border-gray-200 px-2.5 py-1 text-xs hover:bg-gray-50"
-                                  >
-                                    格式化
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-
-                            {useCodexAdvancedConfig && (
-                              <div className="space-y-3">
-                                <div className="space-y-1">
-                                  <div className="text-xs font-medium text-gray-600">
-                                    auth.json (JSON) *
-                                  </div>
-                                  <textarea
-                                    value={codexAuthJsonText}
-                                    onChange={(event) => setCodexAuthJsonText(event.target.value)}
-                                    className="min-h-28 w-full rounded-md border border-gray-200 bg-slate-50 px-3 py-2 text-xs font-mono"
-                                    spellCheck={false}
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <div className="text-xs font-medium text-gray-600">
-                                    config.toml (TOML)
-                                  </div>
-                                  <textarea
-                                    value={codexConfigTomlText}
-                                    onChange={(event) => setCodexConfigTomlText(event.target.value)}
-                                    className="min-h-44 w-full rounded-md border border-gray-200 bg-slate-50 px-3 py-2 text-xs font-mono"
-                                    spellCheck={false}
-                                  />
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  开启后会以这里的 JSON/TOML 内容为准写入 Provider。
-                                </div>
-                              </div>
+                    {shouldShowCodexRawSection && (
+                      <div className="md:col-span-2 space-y-3 rounded-lg border border-gray-200 p-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-sm font-medium">Codex 原始配置</div>
+                          <div className="flex items-center gap-2">
+                            {!isEditingProvider && (
+                              <button
+                                type="button"
+                                onClick={() => setUseCodexAdvancedConfig((prev) => !prev)}
+                                className="rounded border border-gray-200 px-2.5 py-1 text-xs hover:bg-gray-50"
+                              >
+                                {useCodexAdvancedConfig
+                                  ? '关闭高级配置'
+                                  : '编辑 auth.json/config.toml'}
+                              </button>
+                            )}
+                            {(shouldShowCodexRawEditors || isEditingProvider) && (
+                              <button
+                                type="button"
+                                onClick={handleFormatCodexAdvanced}
+                                className="rounded border border-gray-200 px-2.5 py-1 text-xs hover:bg-gray-50"
+                              >
+                                格式化
+                              </button>
                             )}
                           </div>
+                        </div>
+
+                        {shouldShowCodexRawEditors ? (
+                          <div className="space-y-3">
+                            <div className="space-y-1">
+                              <div className="text-xs font-medium text-gray-600">
+                                auth.json (JSON) *
+                              </div>
+                              <textarea
+                                value={codexAuthJsonText}
+                                onChange={(event) => setCodexAuthJsonText(event.target.value)}
+                                className="min-h-28 w-full rounded-md border border-gray-200 bg-slate-50 px-3 py-2 text-xs font-mono"
+                                spellCheck={false}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <div className="text-xs font-medium text-gray-600">
+                                config.toml (TOML)
+                              </div>
+                              <textarea
+                                value={codexConfigTomlText}
+                                onChange={(event) => setCodexConfigTomlText(event.target.value)}
+                                className="min-h-44 w-full rounded-md border border-gray-200 bg-slate-50 px-3 py-2 text-xs font-mono"
+                                spellCheck={false}
+                              />
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {isEditingProvider
+                                ? '编辑模式下会按这里的 JSON/TOML 内容保存该供应商。'
+                                : '开启后会以这里的 JSON/TOML 内容为准写入 Provider。'}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-gray-500">
+                            开启高级配置后可直接编辑 auth.json 与 config.toml。
+                          </div>
                         )}
-                      </>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1291,7 +1438,7 @@ export function ProviderPanel({
                 取消
               </button>
 
-              {dialogTab === 'app' ? (
+              {showAppDialogContent ? (
                 <button
                   onClick={handleSubmitAppProvider}
                   disabled={isPending}

@@ -17,6 +17,7 @@ export interface ProviderProfile {
   vendorKey?: string
   universalId?: string
   accountName?: string
+  accountId?: string
   endpoint?: string
   website?: string
   model?: string

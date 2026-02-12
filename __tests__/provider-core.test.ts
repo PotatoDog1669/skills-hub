@@ -45,7 +45,11 @@ describe('provider core', () => {
     const providerA = core.addProvider({
       appType: 'claude',
       name: 'claude-a',
-      config: { api_key: 'key-a', model: 'claude-sonnet-4' },
+      config: {
+        api_key: 'key-a',
+        model: 'claude-sonnet-4',
+        _profile: { kind: 'official', accountName: 'work-a', note: 'note-a' },
+      },
     })!
 
     const providerB = core.addProvider({
@@ -67,6 +71,11 @@ describe('provider core', () => {
     expect(updatedProviderA?.config).toMatchObject({
       api_key: 'manual-live-key',
       model: 'manual-live-model',
+      _profile: {
+        kind: 'official',
+        accountName: 'work-a',
+        note: 'note-a',
+      },
     })
 
     const current = core.getCurrentProvider('claude')
@@ -130,24 +139,199 @@ describe('provider core', () => {
       appType: 'codex',
       name: 'codex-provider',
       config: {
-        auth: { api_key: 'new-key', organization: 'org-demo' },
-        configToml: { model: 'gpt-5', api_base_url: 'https://api.openai.com/v1' },
+        auth: { OPENAI_API_KEY: 'new-key', organization: 'org-demo' },
+        config: `model_provider = "openai"
+model = "gpt-5"
+model_reasoning_effort = "high"
+
+[model_providers.openai]
+name = "openai"
+base_url = "https://api.openai.com/v1"
+wire_api = "responses"
+requires_openai_auth = true
+`,
       },
     })!
 
     await core.switchProvider({ appType: 'codex', providerId: provider.id })
 
     const auth = await fs.readJson(path.join(codexDir, 'auth.json'))
-    expect(auth).toMatchObject({
-      OPENAI_API_KEY: null,
-      auth_mode: 'chatgpt',
-      api_key: 'new-key',
+    expect(auth).toEqual({
+      OPENAI_API_KEY: 'new-key',
       organization: 'org-demo',
     })
 
     const configTomlRaw = await fs.readFile(path.join(codexDir, 'config.toml'), 'utf-8')
     const configToml = TOML.parse(configTomlRaw)
-    expect(configToml).toMatchObject({ model: 'gpt-5', api_base_url: 'https://api.openai.com/v1' })
+    expect(configToml).toMatchObject({ model: 'gpt-5' })
+    expect(configToml).toMatchObject({
+      model_providers: {
+        openai: {
+          base_url: 'https://api.openai.com/v1',
+        },
+      },
+    })
+  })
+
+  it('captures codex official provider without inheriting api key', async () => {
+    const codexDir = path.join(tempHome, '.codex')
+    await fs.ensureDir(codexDir)
+    await fs.writeJson(path.join(codexDir, 'auth.json'), {
+      OPENAI_API_KEY: 'test-key-should-not-be-captured',
+      auth_mode: 'chatgpt',
+      tokens: { access_token: 'token-demo', account_id: 'acc-1' },
+    })
+    await fs.writeFile(
+      path.join(codexDir, 'config.toml'),
+      'model = "gpt-5.2"\napi_base_url = "https://example.com/v1"\n',
+      'utf-8'
+    )
+
+    const core = await importCore()
+    const captured = await core.captureProviderFromLive({
+      appType: 'codex',
+      name: 'codex-official',
+      profile: { kind: 'official', accountName: 'work-official' },
+    })
+    expect(captured).toBeTruthy()
+    const capturedProvider = captured!
+
+    expect(capturedProvider.config?._profile).toMatchObject({
+      kind: 'official',
+      accountName: 'work-official',
+    })
+    expect(capturedProvider.config?.auth).toMatchObject({
+      OPENAI_API_KEY: null,
+      auth_mode: 'chatgpt',
+      tokens: { access_token: 'token-demo', account_id: 'acc-1' },
+    })
+    expect((capturedProvider.config?.auth as Record<string, unknown>)?.api_key).toBeUndefined()
+    expect((capturedProvider.config?._profile as Record<string, unknown>)?.accountId).toBe('acc-1')
+
+    const authSnapshotPath = path.join(
+      tempHome,
+      '.skills-hub',
+      'provider-auth',
+      'codex',
+      capturedProvider.id,
+      'auth.json'
+    )
+    const authSnapshot = await fs.readJson(authSnapshotPath)
+    expect(authSnapshot).toMatchObject({
+      OPENAI_API_KEY: null,
+      auth_mode: 'chatgpt',
+      tokens: { account_id: 'acc-1' },
+    })
+  })
+
+  it('creates empty auth slot when capturing duplicate codex official account', async () => {
+    const codexDir = path.join(tempHome, '.codex')
+    await fs.ensureDir(codexDir)
+    await fs.writeJson(path.join(codexDir, 'auth.json'), {
+      OPENAI_API_KEY: null,
+      auth_mode: 'chatgpt',
+      tokens: { account_id: 'dup-acc-1' },
+    })
+    await fs.writeFile(
+      path.join(codexDir, 'config.toml'),
+      'model = "gpt-5.2"\napi_base_url = "https://example.com/v1"\n',
+      'utf-8'
+    )
+
+    const core = await importCore()
+    await core.captureProviderFromLive({
+      appType: 'codex',
+      name: 'official-1',
+      profile: { kind: 'official', accountName: 'acc-1' },
+    })
+
+    const duplicated = await core.captureProviderFromLive({
+      appType: 'codex',
+      name: 'official-dup',
+      profile: { kind: 'official', accountName: 'acc-dup' },
+    })
+    expect(duplicated).toBeTruthy()
+    const duplicatedProvider = duplicated!
+
+    expect(duplicatedProvider.config?._profile).toMatchObject({
+      kind: 'official',
+      accountName: 'acc-dup',
+    })
+    expect(
+      (duplicatedProvider.config?._profile as Record<string, unknown>)?.accountId
+    ).toBeUndefined()
+    expect(duplicatedProvider.config?.auth).toMatchObject({
+      OPENAI_API_KEY: null,
+      auth_mode: 'chatgpt',
+    })
+    expect(
+      ((duplicatedProvider.config?.auth as Record<string, unknown>)?.tokens as unknown) ?? null
+    ).toBeNull()
+
+    const authSnapshotPath = path.join(
+      tempHome,
+      '.skills-hub',
+      'provider-auth',
+      'codex',
+      duplicatedProvider.id,
+      'auth.json'
+    )
+    const authSnapshot = await fs.readJson(authSnapshotPath)
+    expect(authSnapshot).toMatchObject({
+      OPENAI_API_KEY: null,
+      auth_mode: 'chatgpt',
+    })
+  })
+
+  it('syncs codex official auth snapshot per provider when switching', async () => {
+    const codexDir = path.join(tempHome, '.codex')
+    await fs.ensureDir(codexDir)
+    await fs.writeJson(path.join(codexDir, 'auth.json'), {
+      OPENAI_API_KEY: null,
+      auth_mode: 'chatgpt',
+      tokens: { account_id: 'acc-a' },
+    })
+    await fs.writeFile(
+      path.join(codexDir, 'config.toml'),
+      'model = "gpt-5.2"\napi_base_url = "https://example.com/v1"\n',
+      'utf-8'
+    )
+
+    const core = await importCore()
+    const officialA = await core.captureProviderFromLive({
+      appType: 'codex',
+      name: 'official-a',
+      profile: { kind: 'official', accountName: 'A' },
+    })
+    const officialB = await core.captureProviderFromLive({
+      appType: 'codex',
+      name: 'official-b',
+      profile: { kind: 'official', accountName: 'B' },
+    })
+    expect(officialA).toBeTruthy()
+    expect(officialB).toBeTruthy()
+    const officialAProvider = officialA!
+    const officialBProvider = officialB!
+
+    await core.switchProvider({ appType: 'codex', providerId: officialBProvider.id })
+
+    // Simulate logging in on provider B after switch.
+    await fs.writeJson(path.join(codexDir, 'auth.json'), {
+      OPENAI_API_KEY: null,
+      auth_mode: 'chatgpt',
+      tokens: { account_id: 'acc-b' },
+    })
+
+    // Switch back to A to backfill B's latest login snapshot.
+    await core.switchProvider({ appType: 'codex', providerId: officialAProvider.id })
+    // Switch to B again, should restore account B snapshot.
+    await core.switchProvider({ appType: 'codex', providerId: officialBProvider.id })
+
+    const authAfter = await fs.readJson(path.join(codexDir, 'auth.json'))
+    expect(authAfter).toMatchObject({
+      auth_mode: 'chatgpt',
+      tokens: { account_id: 'acc-b' },
+    })
   })
 
   it('creates and applies universal provider to multiple apps', async () => {
@@ -192,14 +376,26 @@ describe('provider core', () => {
       return profile?.universalId === universal.id
     })
     expect(codexProvider?.config).toMatchObject({
-      auth: { api_key: 'shared-key-123' },
-      configToml: {
-        api_base_url: 'https://gateway.example.com/v1',
-        model: 'gpt-5.2',
-      },
+      auth: { OPENAI_API_KEY: 'shared-key-123' },
       _profile: {
         kind: 'api',
         universalId: universal.id,
+      },
+    })
+    const codexConfigText =
+      codexProvider &&
+      codexProvider.config &&
+      typeof (codexProvider.config as Record<string, unknown>).config === 'string'
+        ? ((codexProvider.config as Record<string, unknown>).config as string)
+        : ''
+    expect(codexConfigText).not.toBe('')
+    const codexConfig = TOML.parse(codexConfigText)
+    expect(codexConfig).toMatchObject({
+      model: 'gpt-5.2',
+      model_providers: {
+        newapi_shared: {
+          base_url: 'https://gateway.example.com/v1',
+        },
       },
     })
   })
