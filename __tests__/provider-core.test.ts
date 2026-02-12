@@ -77,6 +77,44 @@ describe('provider core', () => {
     expect(latestBackup?.appType).toBe('claude')
   })
 
+  it('captures official account from live config and does not write _profile into live files', async () => {
+    const claudeSettingsPath = path.join(tempHome, '.claude', 'settings.json')
+    await fs.ensureDir(path.dirname(claudeSettingsPath))
+    await fs.writeJson(claudeSettingsPath, {
+      api_key: 'official-live-key',
+      model: 'claude-sonnet-4',
+      account: 'work-account',
+    })
+
+    const core = await importCore()
+
+    const captured = (await core.captureProviderFromLive({
+      appType: 'claude',
+      name: 'claude-official-work',
+      profile: {
+        kind: 'official',
+        accountName: 'work-account',
+        note: 'captured from local login',
+      },
+    }))!
+
+    expect(captured?.config?._profile).toMatchObject({
+      kind: 'official',
+      accountName: 'work-account',
+      note: 'captured from local login',
+    })
+
+    await core.switchProvider({ appType: 'claude', providerId: captured.id })
+
+    const liveAfterSwitch = await fs.readJson(claudeSettingsPath)
+    expect(liveAfterSwitch._profile).toBeUndefined()
+    expect(liveAfterSwitch).toMatchObject({
+      api_key: 'official-live-key',
+      model: 'claude-sonnet-4',
+      account: 'work-account',
+    })
+  })
+
   it('writes codex auth.json and config.toml during switch', async () => {
     const codexDir = path.join(tempHome, '.codex')
     await fs.ensureDir(codexDir)
@@ -102,6 +140,60 @@ describe('provider core', () => {
     const configTomlRaw = await fs.readFile(path.join(codexDir, 'config.toml'), 'utf-8')
     const configToml = TOML.parse(configTomlRaw)
     expect(configToml).toMatchObject({ model: 'gpt-5', api_base_url: 'https://api.openai.com/v1' })
+  })
+
+  it('creates and applies universal provider to multiple apps', async () => {
+    const core = await importCore()
+
+    const universal = core.addUniversalProvider({
+      name: 'newapi-shared',
+      baseUrl: 'https://gateway.example.com/v1',
+      apiKey: 'shared-key-123',
+      apps: {
+        claude: true,
+        codex: true,
+        gemini: false,
+      },
+      models: {
+        claude: { model: 'claude-sonnet-4' },
+        codex: { model: 'gpt-5.2' },
+      },
+    })!
+
+    const applied = core.applyUniversalProvider({ id: universal.id })
+    expect(applied).toHaveLength(2)
+
+    const claudeProvider = core.listProviders('claude').find((provider: unknown) => {
+      const row = provider as { config?: Record<string, unknown> }
+      const profile = row.config?._profile as { universalId?: string } | undefined
+      return profile?.universalId === universal.id
+    })
+    expect(claudeProvider?.config).toMatchObject({
+      api_key: 'shared-key-123',
+      api_base_url: 'https://gateway.example.com/v1',
+      model: 'claude-sonnet-4',
+      _profile: {
+        kind: 'api',
+        universalId: universal.id,
+      },
+    })
+
+    const codexProvider = core.listProviders('codex').find((provider: unknown) => {
+      const row = provider as { config?: Record<string, unknown> }
+      const profile = row.config?._profile as { universalId?: string } | undefined
+      return profile?.universalId === universal.id
+    })
+    expect(codexProvider?.config).toMatchObject({
+      auth: { api_key: 'shared-key-123' },
+      configToml: {
+        api_base_url: 'https://gateway.example.com/v1',
+        model: 'gpt-5.2',
+      },
+      _profile: {
+        kind: 'api',
+        universalId: universal.id,
+      },
+    })
   })
 
   it('writes gemini .env + settings.json and can restore latest backup', async () => {

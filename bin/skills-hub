@@ -26,6 +26,16 @@ const flagsWithValues = new Set([
     '--app',
     '--id',
     '--name',
+    '--note',
+    '--website',
+    '--account-name',
+    '--vendor-key',
+    '--base-url',
+    '--api-key',
+    '--apps',
+    '--claude-model',
+    '--codex-model',
+    '--gemini-model',
     '--config-json',
     '--config-file',
 ]);
@@ -101,6 +111,11 @@ Provider subcommands:
   provider switch --app <app> --id <providerId>              Switch current provider
   provider delete --id <providerId>                          Delete a provider
   provider restore --app <app>                               Restore latest live backup
+  provider capture --app <app> --name <name>                 Capture current live config as provider
+  provider universal-list                                     List universal providers
+  provider universal-add --name <name> --base-url <url> --api-key <key> [--apps claude,codex,gemini]
+  provider universal-apply --id <universalProviderId>        Apply universal provider to enabled apps
+  provider universal-delete --id <universalProviderId>       Delete universal provider
 
 Server options:
   -p, --port <port>   Port to run the server (default: 3000)
@@ -279,15 +294,71 @@ async function readProviderConfigFromArgs(commandArgs) {
     return undefined;
 }
 
+function readProviderProfileArgs(commandArgs, defaultKind = 'api') {
+    const note = readArgValue(commandArgs, '--note');
+    const website = readArgValue(commandArgs, '--website');
+    const accountName = readArgValue(commandArgs, '--account-name');
+    const vendorKey = readArgValue(commandArgs, '--vendor-key');
+
+    return {
+        kind: defaultKind,
+        note: note || undefined,
+        website: website || undefined,
+        accountName: accountName || undefined,
+        vendorKey: vendorKey || undefined,
+    };
+}
+
+function readUniversalApps(commandArgs) {
+    const raw = readArgValue(commandArgs, '--apps');
+    if (!raw) {
+        return {
+            claude: true,
+            codex: true,
+            gemini: true,
+        };
+    }
+
+    const set = new Set(
+        raw
+            .split(',')
+            .map((item) => item.trim().toLowerCase())
+            .filter(Boolean)
+    );
+
+    return {
+        claude: set.has('claude'),
+        codex: set.has('codex'),
+        gemini: set.has('gemini'),
+    };
+}
+
+function readUniversalModels(commandArgs) {
+    const claudeModel = readArgValue(commandArgs, '--claude-model');
+    const codexModel = readArgValue(commandArgs, '--codex-model');
+    const geminiModel = readArgValue(commandArgs, '--gemini-model');
+
+    return {
+        claude: { model: claudeModel || undefined },
+        codex: { model: codexModel || undefined },
+        gemini: { model: geminiModel || undefined },
+    };
+}
+
 function printProviderRow(provider) {
     const currentLabel = provider.isCurrent ? ' (current)' : '';
     console.log(`- ${provider.id} | ${provider.appType} | ${provider.name}${currentLabel}`);
 }
 
+function printUniversalProviderRow(provider) {
+    const enabledApps = ['claude', 'codex', 'gemini'].filter((app) => provider.apps?.[app]).join(',');
+    console.log(`- ${provider.id} | ${provider.name} | ${provider.baseUrl} | apps=${enabledApps || 'none'}`);
+}
+
 async function handleProvider(commandArgs) {
     const subcommand = commandArgs[0];
     if (!subcommand) {
-        throw new Error('Missing provider subcommand. Try: provider list|add|update|switch|delete|restore');
+        throw new Error('Missing provider subcommand. Try: provider list|add|update|switch|delete|restore|capture|universal-list|universal-add|universal-apply|universal-delete');
     }
 
     const core = await loadProviderCore();
@@ -314,7 +385,18 @@ async function handleProvider(commandArgs) {
             if (!config) {
                 throw new Error('provider add requires --config-json or --config-file');
             }
-            const provider = core.addProvider({ appType, name, config });
+            const profile = readProviderProfileArgs(rest, 'api');
+            const provider = core.addProvider({
+                appType,
+                name,
+                config: {
+                    ...config,
+                    _profile: {
+                        ...(config._profile || {}),
+                        ...profile,
+                    },
+                },
+            });
             console.log(`Provider created: ${provider.id} (${provider.appType} / ${provider.name})`);
             return;
         }
@@ -364,6 +446,79 @@ async function handleProvider(commandArgs) {
             }
             const restored = await core.restoreBackup(appType);
             console.log(`Restored ${appType} live config from backup #${restored.id}.`);
+            return;
+        }
+        case 'capture': {
+            const rest = commandArgs.slice(1);
+            const appType = readArgValue(rest, '--app');
+            const name = readArgValue(rest, '--name');
+            if (!appType || !name) {
+                throw new Error('provider capture requires --app and --name');
+            }
+            const profile = readProviderProfileArgs(rest, 'official');
+            const provider = await core.captureProviderFromLive({
+                appType,
+                name,
+                profile,
+            });
+            console.log(`Provider captured from live config: ${provider.id} (${provider.appType} / ${provider.name})`);
+            return;
+        }
+        case 'universal-list': {
+            const universalProviders = core.listUniversalProviders();
+            if (universalProviders.length === 0) {
+                console.log('No universal providers found.');
+                return;
+            }
+            universalProviders.forEach(printUniversalProviderRow);
+            return;
+        }
+        case 'universal-add': {
+            const rest = commandArgs.slice(1);
+            const name = readArgValue(rest, '--name');
+            const baseUrl = readArgValue(rest, '--base-url');
+            const apiKey = readArgValue(rest, '--api-key');
+            const websiteUrl = readArgValue(rest, '--website');
+            const notes = readArgValue(rest, '--note');
+
+            if (!name || !baseUrl || !apiKey) {
+                throw new Error('provider universal-add requires --name, --base-url and --api-key');
+            }
+
+            const universalProvider = core.addUniversalProvider({
+                name,
+                baseUrl,
+                apiKey,
+                websiteUrl: websiteUrl || undefined,
+                notes: notes || undefined,
+                apps: readUniversalApps(rest),
+                models: readUniversalModels(rest),
+            });
+
+            const applied = core.applyUniversalProvider({ id: universalProvider.id });
+            console.log(
+                `Universal provider created: ${universalProvider.id} (${universalProvider.name}), applied ${applied.length} app providers.`
+            );
+            return;
+        }
+        case 'universal-apply': {
+            const rest = commandArgs.slice(1);
+            const id = readArgValue(rest, '--id');
+            if (!id) {
+                throw new Error('provider universal-apply requires --id');
+            }
+            const applied = core.applyUniversalProvider({ id });
+            console.log(`Universal provider applied: ${id} (${applied.length} app providers updated)`);
+            return;
+        }
+        case 'universal-delete': {
+            const rest = commandArgs.slice(1);
+            const id = readArgValue(rest, '--id');
+            if (!id) {
+                throw new Error('provider universal-delete requires --id');
+            }
+            const deleted = core.deleteUniversalProvider(id);
+            console.log(deleted ? `Deleted universal provider: ${id}` : `Universal provider not found: ${id}`);
             return;
         }
         default:

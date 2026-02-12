@@ -13,12 +13,13 @@ import { CreateSkillModal } from './CreateSkillModal'
 import { Download, Plus } from 'lucide-react'
 import Link from 'next/link'
 import { ProviderPanel } from './ProviderPanel'
-import type { AppType, ProviderRecord } from '@/lib/core/provider-types'
+import type { AppType, ProviderRecord, UniversalProviderRecord } from '@/lib/core/provider-types'
 
 interface DashboardProps {
   skills: Skill[]
   config: AppConfig
   providers: ProviderRecord[]
+  universalProviders: UniversalProviderRecord[]
   currentProviders: Record<AppType, ProviderRecord | null>
 }
 
@@ -31,7 +32,13 @@ function PlaceholderCard({ title, text }: { title: string; text: string }) {
   )
 }
 
-export function Dashboard({ skills, config, providers, currentProviders }: DashboardProps) {
+export function Dashboard({
+  skills,
+  config,
+  providers,
+  universalProviders,
+  currentProviders,
+}: DashboardProps) {
   const searchParams = useSearchParams()
   const currentView = searchParams.get('view') || 'inventory-skills'
   const currentId = searchParams.get('id')
@@ -117,7 +124,11 @@ export function Dashboard({ skills, config, providers, currentProviders }: Dashb
           <h1 className="text-3xl font-bold">{title}</h1>
           <span className="text-muted-foreground">{providers.length} providers configured</span>
         </div>
-        <ProviderPanel providers={providers} currentProviders={currentProviders} />
+        <ProviderPanel
+          providers={providers}
+          universalProviders={universalProviders}
+          currentProviders={currentProviders}
+        />
       </div>
     )
   }

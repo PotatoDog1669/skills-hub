@@ -55,16 +55,20 @@ skills-hub --no-open                       # 不自动打开浏览器
 
 **CLI 命令：**
 
-| 命令                              | 描述                                                                   |
-| :-------------------------------- | :--------------------------------------------------------------------- |
-| `skills-hub list`                 | 列出中心 Hub (`~/skills-hub`) 中的所有技能                             |
-| `skills-hub import <url>`         | 从 GitHub 导入技能（支持指定分支: `--branch main`）                    |
-| `skills-hub sync --all`           | 将 Hub 技能同步到所有已启用的 Agent (Antigravity, Claude, Cursor 等)   |
-| `skills-hub sync --target <name>` | 同步到特定 Agent（例如：`--target claude` 同步到 `~/.claude/skills/`） |
-| `skills-hub provider list`        | 查看 Provider 档案列表（`claude`、`codex`、`gemini`）                  |
-| `skills-hub provider add ...`     | 通过 `--app --name --config-json` 或 `--config-file` 新增 Provider     |
-| `skills-hub provider switch ...`  | 执行 Provider 切换（含 backfill + 备份 + 原子写）                      |
-| `skills-hub provider restore ...` | 按 app 恢复最近一次 live 配置备份                                      |
+| 命令                                      | 描述                                                                   |
+| :---------------------------------------- | :--------------------------------------------------------------------- |
+| `skills-hub list`                         | 列出中心 Hub (`~/skills-hub`) 中的所有技能                             |
+| `skills-hub import <url>`                 | 从 GitHub 导入技能（支持指定分支: `--branch main`）                    |
+| `skills-hub sync --all`                   | 将 Hub 技能同步到所有已启用的 Agent (Antigravity, Claude, Cursor 等)   |
+| `skills-hub sync --target <name>`         | 同步到特定 Agent（例如：`--target claude` 同步到 `~/.claude/skills/`） |
+| `skills-hub provider list`                | 查看 Provider 档案列表（`claude`、`codex`、`gemini`）                  |
+| `skills-hub provider add ...`             | 通过 `--app --name --config-json` 或 `--config-file` 新增 Provider     |
+| `skills-hub provider switch ...`          | 执行 Provider 切换（含 backfill + 备份 + 原子写）                      |
+| `skills-hub provider restore ...`         | 按 app 恢复最近一次 live 配置备份                                      |
+| `skills-hub provider capture ...`         | 将当前 live 配置捕获为“官方账号”Provider                               |
+| `skills-hub provider universal-add ...`   | 创建统一供应商并同步到多个 app                                         |
+| `skills-hub provider universal-list`      | 查看统一供应商列表                                                     |
+| `skills-hub provider universal-apply ...` | 将统一供应商重新同步到已启用 app                                       |
 
 ### 开发指南
 

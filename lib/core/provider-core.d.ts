@@ -10,6 +10,48 @@ export interface ProviderRecord {
   updatedAt: number
 }
 
+export interface ProviderProfile {
+  kind?: 'api' | 'official'
+  vendorKey?: string
+  universalId?: string
+  accountName?: string
+  endpoint?: string
+  website?: string
+  model?: string
+  note?: string
+}
+
+export interface UniversalProviderApps {
+  claude: boolean
+  codex: boolean
+  gemini: boolean
+}
+
+export interface UniversalProviderModels {
+  claude?: {
+    model?: string
+  }
+  codex?: {
+    model?: string
+  }
+  gemini?: {
+    model?: string
+  }
+}
+
+export interface UniversalProviderRecord {
+  id: string
+  name: string
+  baseUrl: string
+  apiKey: string
+  websiteUrl?: string
+  notes?: string
+  apps: UniversalProviderApps
+  models: UniversalProviderModels
+  createdAt: number
+  updatedAt: number
+}
+
 export interface SwitchResult {
   appType: AppType
   currentProviderId: string
@@ -32,6 +74,12 @@ export function addProvider(input: {
   name: string
   config: Record<string, unknown>
 }): ProviderRecord
+
+export function captureProviderFromLive(input: {
+  appType: AppType
+  name: string
+  profile?: ProviderProfile
+}): Promise<ProviderRecord>
 
 export function updateProvider(input: {
   id: string
@@ -60,3 +108,27 @@ export function restoreBackup(
 
 export function maskProvider(provider: ProviderRecord | null): ProviderRecord | null
 export function maskProviders(providers: ProviderRecord[]): ProviderRecord[]
+
+export function listUniversalProviders(): UniversalProviderRecord[]
+export function getUniversalProviderById(id: string): UniversalProviderRecord | null
+export function addUniversalProvider(input: {
+  name: string
+  baseUrl: string
+  apiKey: string
+  websiteUrl?: string
+  notes?: string
+  apps?: Partial<UniversalProviderApps>
+  models?: UniversalProviderModels
+}): UniversalProviderRecord
+export function updateUniversalProvider(input: {
+  id: string
+  name?: string
+  baseUrl?: string
+  apiKey?: string
+  websiteUrl?: string
+  notes?: string
+  apps?: Partial<UniversalProviderApps>
+  models?: UniversalProviderModels
+}): UniversalProviderRecord
+export function deleteUniversalProvider(id: string): boolean
+export function applyUniversalProvider(input: { id: string }): ProviderRecord[]

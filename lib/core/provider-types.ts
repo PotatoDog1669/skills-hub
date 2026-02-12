@@ -12,6 +12,48 @@ export interface ProviderRecord {
   updatedAt: number
 }
 
+export interface ProviderProfile {
+  kind?: 'api' | 'official'
+  vendorKey?: string
+  universalId?: string
+  accountName?: string
+  endpoint?: string
+  website?: string
+  model?: string
+  note?: string
+}
+
+export interface UniversalProviderApps {
+  claude: boolean
+  codex: boolean
+  gemini: boolean
+}
+
+export interface UniversalProviderModels {
+  claude?: {
+    model?: string
+  }
+  codex?: {
+    model?: string
+  }
+  gemini?: {
+    model?: string
+  }
+}
+
+export interface UniversalProviderRecord {
+  id: string
+  name: string
+  baseUrl: string
+  apiKey: string
+  websiteUrl?: string
+  notes?: string
+  apps: UniversalProviderApps
+  models: UniversalProviderModels
+  createdAt: number
+  updatedAt: number
+}
+
 export interface SwitchResult {
   appType: AppType
   currentProviderId: string

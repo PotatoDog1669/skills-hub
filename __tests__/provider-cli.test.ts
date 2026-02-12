@@ -84,4 +84,113 @@ describe('provider CLI', () => {
     const settings = await fs.readJson(settingsPath)
     expect(settings).toMatchObject({ api_key: 'cli-key-123', model: 'claude-sonnet-4' })
   })
+
+  it('supports capture flow for official account', async () => {
+    const env = {
+      ...process.env,
+      HOME: tempHome,
+    }
+
+    const settingsPath = path.join(tempHome, '.claude', 'settings.json')
+    await fs.ensureDir(path.dirname(settingsPath))
+    await fs.writeJson(settingsPath, {
+      api_key: 'official-token',
+      model: 'claude-sonnet-4',
+      account: 'work-login',
+    })
+
+    const captured = await execFileAsync(
+      'node',
+      [
+        'bin/skills-hub',
+        'provider',
+        'capture',
+        '--app',
+        'claude',
+        '--name',
+        'claude-official-work',
+        '--account-name',
+        'work-login',
+      ],
+      { cwd: repoRoot, env }
+    )
+
+    expect(captured.stdout).toContain('Provider captured from live config:')
+
+    const listed = await execFileAsync(
+      'node',
+      ['bin/skills-hub', 'provider', 'list', '--app', 'claude'],
+      { cwd: repoRoot, env }
+    )
+
+    expect(listed.stdout).toContain('claude-official-work')
+  })
+
+  it('supports universal provider add/list/apply flow', async () => {
+    const env = {
+      ...process.env,
+      HOME: tempHome,
+    }
+
+    const added = await execFileAsync(
+      'node',
+      [
+        'bin/skills-hub',
+        'provider',
+        'universal-add',
+        '--name',
+        'newapi-shared',
+        '--base-url',
+        'https://gateway.example.com/v1',
+        '--api-key',
+        'shared-key-123',
+        '--apps',
+        'claude,codex',
+        '--claude-model',
+        'claude-sonnet-4',
+        '--codex-model',
+        'gpt-5.2',
+      ],
+      { cwd: repoRoot, env }
+    )
+
+    expect(added.stdout).toContain('Universal provider created:')
+
+    const listedUniversal = await execFileAsync(
+      'node',
+      ['bin/skills-hub', 'provider', 'universal-list'],
+      { cwd: repoRoot, env }
+    )
+    expect(listedUniversal.stdout).toContain('newapi-shared')
+
+    const universalId = listedUniversal.stdout
+      .split('\\n')
+      .map((line) => line.trim())
+      .find((line) => line.startsWith('- '))
+      ?.split('|')[0]
+      ?.replace(/^-\s*/, '')
+      ?.trim()
+    expect(universalId).toBeTruthy()
+
+    const reapplied = await execFileAsync(
+      'node',
+      ['bin/skills-hub', 'provider', 'universal-apply', '--id', universalId!],
+      { cwd: repoRoot, env }
+    )
+    expect(reapplied.stdout).toContain('Universal provider applied:')
+
+    const claudeProviders = await execFileAsync(
+      'node',
+      ['bin/skills-hub', 'provider', 'list', '--app', 'claude'],
+      { cwd: repoRoot, env }
+    )
+    expect(claudeProviders.stdout).toContain('newapi-shared')
+
+    const codexProviders = await execFileAsync(
+      'node',
+      ['bin/skills-hub', 'provider', 'list', '--app', 'codex'],
+      { cwd: repoRoot, env }
+    )
+    expect(codexProviders.stdout).toContain('newapi-shared')
+  })
 })

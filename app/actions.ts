@@ -28,17 +28,30 @@ import {
 import {
   APP_TYPES,
   addProvider,
+  addUniversalProvider,
+  applyUniversalProvider,
+  captureProviderFromLive,
   deleteProvider,
+  deleteUniversalProvider,
   getCurrentProvider,
+  getProviderById,
   getLatestBackup,
+  getUniversalProviderById,
   listProviders,
+  listUniversalProviders,
   maskProvider,
   maskProviders,
   restoreBackup,
   switchProvider,
+  updateUniversalProvider,
   updateProvider,
 } from '@/lib/core/provider-core.mjs'
-import type { AppType } from '@/lib/core/provider-types'
+import type {
+  AppType,
+  UniversalProviderApps,
+  UniversalProviderModels,
+  UniversalProviderRecord,
+} from '@/lib/core/provider-types'
 
 function assertAppType(appType: string): asserts appType is AppType {
   if (!APP_TYPES.includes(appType as AppType)) {
@@ -71,6 +84,14 @@ export async function actionProviderList(appType?: string) {
 export async function actionProviderCurrent(appType: string) {
   assertAppType(appType)
   return maskProvider(getCurrentProvider(appType))
+}
+
+export async function actionProviderGetRaw(id: string) {
+  const provider = getProviderById(id)
+  if (!provider) {
+    throw new Error(`Provider not found: ${id}`)
+  }
+  return provider
 }
 
 export async function actionProviderAdd(values: {
@@ -128,6 +149,88 @@ export async function actionProviderRestoreLatestBackup(appType: string) {
   const result = await restoreBackup(appType)
   revalidatePath('/')
   return result
+}
+
+export async function actionProviderCaptureLive(values: {
+  appType: string
+  name: string
+  profile?: Record<string, unknown>
+}) {
+  assertAppType(values.appType)
+  const provider = await captureProviderFromLive({
+    appType: values.appType,
+    name: values.name,
+    profile: values.profile,
+  })
+  revalidatePath('/')
+  return maskProvider(provider)
+}
+
+function maskUniversalProvider(provider: UniversalProviderRecord): UniversalProviderRecord {
+  return {
+    ...provider,
+    apiKey: provider.apiKey.trim() ? `${provider.apiKey.slice(0, 3)}****` : '',
+  }
+}
+
+export async function actionUniversalProviderList() {
+  const providers = listUniversalProviders() as UniversalProviderRecord[]
+  return providers.map(maskUniversalProvider)
+}
+
+export async function actionUniversalProviderGetRaw(id: string) {
+  const provider = getUniversalProviderById(id)
+  if (!provider) {
+    throw new Error(`Universal provider not found: ${id}`)
+  }
+  return provider
+}
+
+export async function actionUniversalProviderAdd(values: {
+  name: string
+  baseUrl: string
+  apiKey: string
+  websiteUrl?: string
+  notes?: string
+  apps?: Partial<UniversalProviderApps>
+  models?: UniversalProviderModels
+}) {
+  const provider = addUniversalProvider(values) as UniversalProviderRecord | null
+  if (!provider) {
+    throw new Error('Failed to create universal provider')
+  }
+  revalidatePath('/')
+  return maskUniversalProvider(provider)
+}
+
+export async function actionUniversalProviderUpdate(values: {
+  id: string
+  name?: string
+  baseUrl?: string
+  apiKey?: string
+  websiteUrl?: string
+  notes?: string
+  apps?: Partial<UniversalProviderApps>
+  models?: UniversalProviderModels
+}) {
+  const provider = updateUniversalProvider(values) as UniversalProviderRecord | null
+  if (!provider) {
+    throw new Error('Failed to update universal provider')
+  }
+  revalidatePath('/')
+  return maskUniversalProvider(provider)
+}
+
+export async function actionUniversalProviderDelete(id: string) {
+  const deleted = deleteUniversalProvider(id)
+  revalidatePath('/')
+  return deleted
+}
+
+export async function actionUniversalProviderApply(id: string) {
+  const applied = applyUniversalProvider({ id })
+  revalidatePath('/')
+  return maskProviders(applied)
 }
 
 export async function actionSyncSkill(
