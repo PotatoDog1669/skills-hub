@@ -118,7 +118,10 @@ describe('provider core', () => {
   it('writes codex auth.json and config.toml during switch', async () => {
     const codexDir = path.join(tempHome, '.codex')
     await fs.ensureDir(codexDir)
-    await fs.writeJson(path.join(codexDir, 'auth.json'), { OPENAI_API_KEY: 'old-key' })
+    await fs.writeJson(path.join(codexDir, 'auth.json'), {
+      OPENAI_API_KEY: null,
+      auth_mode: 'chatgpt',
+    })
     await fs.writeFile(path.join(codexDir, 'config.toml'), 'model = "old-model"\n', 'utf-8')
 
     const core = await importCore()
@@ -135,8 +138,12 @@ describe('provider core', () => {
     await core.switchProvider({ appType: 'codex', providerId: provider.id })
 
     const auth = await fs.readJson(path.join(codexDir, 'auth.json'))
-    expect(auth).toMatchObject({ OPENAI_API_KEY: 'new-key', organization: 'org-demo' })
-    expect(auth.api_key).toBeUndefined()
+    expect(auth).toMatchObject({
+      OPENAI_API_KEY: null,
+      auth_mode: 'chatgpt',
+      api_key: 'new-key',
+      organization: 'org-demo',
+    })
 
     const configTomlRaw = await fs.readFile(path.join(codexDir, 'config.toml'), 'utf-8')
     const configToml = TOML.parse(configTomlRaw)
@@ -185,7 +192,7 @@ describe('provider core', () => {
       return profile?.universalId === universal.id
     })
     expect(codexProvider?.config).toMatchObject({
-      auth: { OPENAI_API_KEY: 'shared-key-123' },
+      auth: { api_key: 'shared-key-123' },
       configToml: {
         api_base_url: 'https://gateway.example.com/v1',
         model: 'gpt-5.2',
