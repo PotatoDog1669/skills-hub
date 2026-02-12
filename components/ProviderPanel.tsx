@@ -856,7 +856,7 @@ export function ProviderPanel({
         )}
       </div>
 
-      {message && (
+      {message && !dialogOpen && (
         <div
           className={`rounded-lg px-3 py-2 text-sm ${
             message.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
@@ -1004,6 +1004,18 @@ export function ProviderPanel({
             </div>
 
             <div className="overflow-y-auto px-6 py-5 space-y-5">
+              {message && (
+                <div
+                  className={`rounded-lg px-3 py-2 text-sm ${
+                    message.type === 'success'
+                      ? 'bg-green-50 text-green-700'
+                      : 'bg-red-50 text-red-700'
+                  }`}
+                >
+                  {message.text}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-2 rounded-xl bg-gray-100 p-1">
                 <button
                   onClick={() => setDialogTab('app')}
