@@ -14,6 +14,8 @@ import { Download, Plus } from 'lucide-react'
 import Link from 'next/link'
 import { ProviderPanel } from './ProviderPanel'
 import type { AppType, ProviderRecord, UniversalProviderRecord } from '@/lib/core/provider-types'
+import type { KitLoadoutRecord, KitPolicyRecord, KitRecord } from '@/lib/core/kit-types'
+import { KitPanel } from './KitPanel'
 
 interface DashboardProps {
   skills: Skill[]
@@ -21,6 +23,9 @@ interface DashboardProps {
   providers: ProviderRecord[]
   universalProviders: UniversalProviderRecord[]
   currentProviders: Record<AppType, ProviderRecord | null>
+  kitPolicies: KitPolicyRecord[]
+  kitLoadouts: KitLoadoutRecord[]
+  kits: KitRecord[]
 }
 
 function PlaceholderCard({ title, text }: { title: string; text: string }) {
@@ -38,6 +43,9 @@ export function Dashboard({
   providers,
   universalProviders,
   currentProviders,
+  kitPolicies,
+  kitLoadouts,
+  kits,
 }: DashboardProps) {
   const searchParams = useSearchParams()
   const currentView = searchParams.get('view') || 'inventory-skills'
@@ -90,23 +98,21 @@ export function Dashboard({
       ? 'Inventory / Providers'
       : currentView === 'inventory-skills' || currentView === 'all'
         ? 'Inventory / Skills'
-        : currentView === 'inventory-loadouts'
-          ? 'Inventory / Loadouts'
-          : currentView === 'inventory-policies'
-            ? 'Inventory / Policies'
-            : currentView === 'projects'
-              ? 'Projects'
-              : currentView === 'deploy'
-                ? 'Deploy'
-                : currentView === 'hub'
-                  ? 'Inventory / Skills / Hub'
-                  : currentView === 'agent'
-                    ? `Projects / Agent / ${currentId}`
-                    : currentView === 'introduction'
-                      ? 'Introduction'
-                      : currentView === 'detail'
-                        ? 'Skill Details'
-                        : 'Projects / Skills'
+        : currentView === 'inventory-kit'
+          ? 'Inventory / Kit'
+          : currentView === 'projects'
+            ? 'Projects'
+            : currentView === 'deploy'
+              ? 'Deploy'
+              : currentView === 'hub'
+                ? 'Inventory / Skills / Hub'
+                : currentView === 'agent'
+                  ? `Projects / Agent / ${currentId}`
+                  : currentView === 'introduction'
+                    ? 'Introduction'
+                    : currentView === 'detail'
+                      ? 'Skill Details'
+                      : 'Projects / Skills'
 
   if (currentView === 'introduction') {
     return <IntroductionView />
@@ -133,25 +139,20 @@ export function Dashboard({
     )
   }
 
-  if (currentView === 'inventory-loadouts') {
+  if (currentView === 'inventory-kit') {
     return (
       <div className="container py-8 space-y-6">
-        <h1 className="text-3xl font-bold">{title}</h1>
-        <PlaceholderCard
-          title="Loadouts are planned next"
-          text="M1 聚焦 Provider 切换稳定性，Loadout 在下一里程碑接入。"
-        />
-      </div>
-    )
-  }
-
-  if (currentView === 'inventory-policies') {
-    return (
-      <div className="container py-8 space-y-6">
-        <h1 className="text-3xl font-bold">{title}</h1>
-        <PlaceholderCard
-          title="Policy templates are planned next"
-          text="M1 先交付 Provider，Policy (AGENTS.md 模板) 将在后续里程碑落地。"
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold">{title}</h1>
+          <span className="text-sm text-gray-500">{kits.length} kits</span>
+        </div>
+        <KitPanel
+          policies={kitPolicies}
+          loadouts={kitLoadouts}
+          kits={kits}
+          skills={skills}
+          projects={config.projects}
+          agents={config.agents}
         />
       </div>
     )
@@ -193,8 +194,8 @@ export function Dashboard({
         <h1 className="text-3xl font-bold">{title}</h1>
         <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
           <div className="text-sm text-gray-600">
-            一键部署入口在后续里程碑上线。当前可先在 Inventory/Providers 完成账号切换，再执行 Skills
-            Sync。
+            推荐先在 Inventory / Providers 确认账号，再进入 Inventory / Kit 组合并应用 Skills +
+            AGENTS.md。
           </div>
           <div className="grid md:grid-cols-3 gap-3">
             {Object.entries(currentProviders).map(([appType, provider]) => (

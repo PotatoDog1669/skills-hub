@@ -46,12 +46,31 @@ import {
   updateUniversalProvider,
   updateProvider,
 } from '@/lib/core/provider-core.mjs'
+import {
+  addKit,
+  addKitLoadout,
+  addKitPolicy,
+  deleteKit,
+  deleteKitLoadout,
+  deleteKitPolicy,
+  getKitById,
+  getKitLoadoutById,
+  getKitPolicyById,
+  listKitLoadouts,
+  listKitPolicies,
+  listKits,
+  markKitApplied,
+  updateKit,
+  updateKitLoadout,
+  updateKitPolicy,
+} from '@/lib/core/kit-core.mjs'
 import type {
   AppType,
   UniversalProviderApps,
   UniversalProviderModels,
   UniversalProviderRecord,
 } from '@/lib/core/provider-types'
+import type { KitApplyResult, KitSyncMode } from '@/lib/core/kit-types'
 
 function assertAppType(appType: string): asserts appType is AppType {
   if (!APP_TYPES.includes(appType as AppType)) {
@@ -73,6 +92,45 @@ function normalizeProviderConfig(config: unknown): Record<string, unknown> {
   }
 
   return config as Record<string, unknown>
+}
+
+async function atomicWriteText(filePath: string, content: string): Promise<void> {
+  const dirPath = path.dirname(filePath)
+  await fs.ensureDir(dirPath)
+  const tempPath = path.join(
+    dirPath,
+    `.${path.basename(filePath)}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  )
+  await fs.writeFile(tempPath, content, 'utf-8')
+  await fs.move(tempPath, filePath, { overwrite: true })
+}
+
+function normalizeKitMode(value: unknown): KitSyncMode {
+  return value === 'link' ? 'link' : 'copy'
+}
+
+function normalizeLoadoutItems(
+  items: unknown
+): Array<{ skillPath: string; mode: KitSyncMode; sortOrder: number }> {
+  if (!Array.isArray(items)) {
+    throw new Error('Skills package items must be an array.')
+  }
+
+  const seen = new Set<string>()
+  const normalized: Array<{ skillPath: string; mode: KitSyncMode; sortOrder: number }> = []
+  for (const [index, item] of items.entries()) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+    const raw = item as Record<string, unknown>
+    const skillPath = String(raw.skillPath || '').trim()
+    if (!skillPath || seen.has(skillPath)) continue
+    normalized.push({
+      skillPath,
+      mode: normalizeKitMode(raw.mode),
+      sortOrder: Number.isInteger(raw.sortOrder) ? Number(raw.sortOrder) : index,
+    })
+    seen.add(skillPath)
+  }
+  return normalized
 }
 
 export async function actionProviderList(appType?: string) {
@@ -231,6 +289,198 @@ export async function actionUniversalProviderApply(id: string) {
   const applied = applyUniversalProvider({ id })
   revalidatePath('/')
   return maskProviders(applied)
+}
+
+export async function actionKitPolicyList() {
+  return listKitPolicies()
+}
+
+export async function actionKitPolicyAdd(values: {
+  name: string
+  description?: string
+  content: string
+}) {
+  const policy = addKitPolicy(values)
+  revalidatePath('/')
+  return policy
+}
+
+export async function actionKitPolicyUpdate(values: {
+  id: string
+  name?: string
+  description?: string
+  content?: string
+}) {
+  const policy = updateKitPolicy(values)
+  revalidatePath('/')
+  return policy
+}
+
+export async function actionKitPolicyDelete(id: string) {
+  const deleted = deleteKitPolicy(id)
+  revalidatePath('/')
+  return deleted
+}
+
+export async function actionKitLoadoutList() {
+  return listKitLoadouts()
+}
+
+export async function actionKitLoadoutAdd(values: {
+  name: string
+  description?: string
+  items: Array<{ skillPath: string; mode?: KitSyncMode; sortOrder?: number }>
+}) {
+  const loadout = addKitLoadout({
+    name: values.name,
+    description: values.description,
+    items: normalizeLoadoutItems(values.items),
+  })
+  revalidatePath('/')
+  return loadout
+}
+
+export async function actionKitLoadoutUpdate(values: {
+  id: string
+  name?: string
+  description?: string
+  items?: Array<{ skillPath: string; mode?: KitSyncMode; sortOrder?: number }>
+}) {
+  const loadout = updateKitLoadout({
+    id: values.id,
+    name: values.name,
+    description: values.description,
+    items: values.items ? normalizeLoadoutItems(values.items) : undefined,
+  })
+  revalidatePath('/')
+  return loadout
+}
+
+export async function actionKitLoadoutDelete(id: string) {
+  const deleted = deleteKitLoadout(id)
+  revalidatePath('/')
+  return deleted
+}
+
+export async function actionKitList() {
+  return listKits()
+}
+
+export async function actionKitAdd(values: {
+  name: string
+  description?: string
+  policyId: string
+  loadoutId: string
+}) {
+  const kit = addKit(values)
+  revalidatePath('/')
+  return kit
+}
+
+export async function actionKitUpdate(values: {
+  id: string
+  name?: string
+  description?: string
+  policyId?: string
+  loadoutId?: string
+}) {
+  const kit = updateKit(values)
+  revalidatePath('/')
+  return kit
+}
+
+export async function actionKitDelete(id: string) {
+  const deleted = deleteKit(id)
+  revalidatePath('/')
+  return deleted
+}
+
+export async function actionKitApply(values: {
+  kitId: string
+  projectPath: string
+  agentName: string
+  mode?: KitSyncMode
+  overwriteAgentsMd?: boolean
+}): Promise<KitApplyResult> {
+  const kitId = values.kitId.trim()
+  const projectPath = values.projectPath.trim()
+  const agentName = values.agentName.trim()
+  const applyMode = normalizeKitMode(values.mode)
+  const overwriteAgentsMd = values.overwriteAgentsMd === true
+
+  if (!kitId) throw new Error('kitId is required')
+  if (!projectPath) throw new Error('projectPath is required')
+  if (!agentName) throw new Error('agentName is required')
+
+  const kit = getKitById(kitId)
+  if (!kit) throw new Error(`Kit not found: ${kitId}`)
+
+  const policy = getKitPolicyById(kit.policyId)
+  if (!policy) throw new Error(`AGENTS.md not found: ${kit.policyId}`)
+
+  const loadout = getKitLoadoutById(kit.loadoutId)
+  if (!loadout) throw new Error(`Skills package not found: ${kit.loadoutId}`)
+
+  const config = await getConfig()
+  const projectExists = config.projects.includes(projectPath)
+  if (!projectExists) {
+    throw new Error('Target project is not registered in Skills Hub.')
+  }
+
+  const targetAgent = config.agents.find((agent) => agent.enabled && agent.name === agentName)
+  if (!targetAgent) {
+    throw new Error('Target agent is not enabled or not found.')
+  }
+
+  const targetSkillParent = path.join(projectPath, targetAgent.projectPath)
+  const loadoutResults: KitApplyResult['loadoutResults'] = []
+
+  for (const item of loadout.items) {
+    try {
+      const destination = await syncSkill(item.skillPath, targetSkillParent, applyMode)
+      loadoutResults.push({
+        skillPath: item.skillPath,
+        mode: applyMode,
+        destination,
+        status: 'success',
+      })
+    } catch (error) {
+      loadoutResults.push({
+        skillPath: item.skillPath,
+        mode: applyMode,
+        destination: path.join(targetSkillParent, path.basename(item.skillPath)),
+        status: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+      })
+      throw new Error(`Failed to sync skill: ${item.skillPath}`)
+    }
+  }
+
+  const policyPath = path.join(projectPath, 'AGENTS.md')
+  const policyExists = await fs.pathExists(policyPath)
+  if (policyExists && !overwriteAgentsMd) {
+    throw new Error(`AGENTS_MD_EXISTS::${policyPath}`)
+  }
+
+  const policyContent = policy.content.endsWith('\n') ? policy.content : `${policy.content}\n`
+  await atomicWriteText(policyPath, policyContent)
+
+  const applied = markKitApplied({ id: kitId, projectPath, agentName })
+  if (!applied) {
+    throw new Error('Failed to record kit application metadata.')
+  }
+  revalidatePath('/')
+
+  return {
+    kitId: kitId,
+    kitName: applied.name,
+    policyPath,
+    projectPath,
+    agentName,
+    appliedAt: applied.lastAppliedAt || Date.now(),
+    overwroteAgentsMd: policyExists && overwriteAgentsMd,
+    loadoutResults,
+  }
 }
 
 export async function actionSyncSkill(

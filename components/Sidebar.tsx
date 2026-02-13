@@ -13,7 +13,6 @@ import {
   Rocket,
   Shield,
   Package,
-  ScrollText,
   Bot,
 } from 'lucide-react'
 import styles from './Sidebar.module.css'
@@ -114,18 +113,11 @@ export function Sidebar({ config }: SidebarProps) {
             <span>Skills</span>
           </Link>
           <Link
-            href="/?view=inventory-loadouts"
-            className={clsx(styles.navItem, currentView === 'inventory-loadouts' && styles.active)}
+            href="/?view=inventory-kit"
+            className={clsx(styles.navItem, currentView === 'inventory-kit' && styles.active)}
           >
             <Package size={16} className="shrink-0" />
-            <span>Loadouts</span>
-          </Link>
-          <Link
-            href="/?view=inventory-policies"
-            className={clsx(styles.navItem, currentView === 'inventory-policies' && styles.active)}
-          >
-            <ScrollText size={16} className="shrink-0" />
-            <span>Policies</span>
+            <span>Kit</span>
           </Link>
         </nav>
 

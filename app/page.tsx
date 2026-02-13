@@ -8,7 +8,9 @@ import {
   listUniversalProviders,
   maskProviders,
 } from '@/lib/core/provider-core.mjs'
+import { listKitLoadouts, listKitPolicies, listKits } from '@/lib/core/kit-core.mjs'
 import type { AppType, ProviderRecord, UniversalProviderRecord } from '@/lib/core/provider-types'
+import type { KitLoadoutRecord, KitPolicyRecord, KitRecord } from '@/lib/core/kit-types'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,6 +27,9 @@ export default async function Home() {
   const config = await getConfig()
   const providers = maskProviders(listProviders()) as ProviderRecord[]
   const universalProviderRows = listUniversalProviders() as UniversalProviderRecord[]
+  const kitPolicies = listKitPolicies() as KitPolicyRecord[]
+  const kitLoadouts = listKitLoadouts() as KitLoadoutRecord[]
+  const kits = listKits() as KitRecord[]
   const universalProviders = universalProviderRows.map((provider) => ({
     ...provider,
     apiKey: provider.apiKey.trim() ? `${provider.apiKey.slice(0, 3)}****` : '',
@@ -46,6 +51,9 @@ export default async function Home() {
         providers={providers}
         universalProviders={universalProviders}
         currentProviders={currentProviders}
+        kitPolicies={kitPolicies}
+        kitLoadouts={kitLoadouts}
+        kits={kits}
       />
     </Suspense>
   )
