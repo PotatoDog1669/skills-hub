@@ -49,12 +49,16 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Update Homebrew tap formula
-        if: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN != '' }}
         env:
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
           HOMEBREW_TAP_REPO: ${{ vars.HOMEBREW_TAP_REPO }}
         run: |
           set -euo pipefail
+
+          if [ -z "${HOMEBREW_TAP_GITHUB_TOKEN:-}" ]; then
+            echo "::notice::HOMEBREW_TAP_GITHUB_TOKEN not configured; skipping Homebrew tap update."
+            exit 0
+          fi
 
           VERSION="${GITHUB_REF_NAME#v}"
           PACKAGE_NAME="@potatodog1669/skills-hub"
@@ -96,7 +100,3 @@ jobs:
           git add Formula/skills-hub.rb
           git commit -m "skills-hub ${VERSION}"
           git push origin HEAD
-
-      - name: Homebrew tap update skipped
-        if: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN == '' }}
-        run: echo "::notice::HOMEBREW_TAP_GITHUB_TOKEN not configured; skipping Homebrew tap update."
