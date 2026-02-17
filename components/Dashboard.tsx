@@ -7,15 +7,16 @@ import { SyncModal } from './SyncModal'
 import { useMemo, useState } from 'react'
 import { IntroductionView } from './IntroductionView'
 import { SkillDetailView } from './SkillDetailView'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams } from '@/apps/desktop-ui/src/shims/navigation'
 import { ImportSkillModal } from './ImportSkillModal'
 import { CreateSkillModal } from './CreateSkillModal'
 import { Download, Plus } from 'lucide-react'
-import Link from 'next/link'
+import Link from '@/apps/desktop-ui/src/shims/link'
 import { ProviderPanel } from './ProviderPanel'
 import type { AppType, ProviderRecord, UniversalProviderRecord } from '@/lib/core/provider-types'
 import type { KitLoadoutRecord, KitPolicyRecord, KitRecord } from '@/lib/core/kit-types'
 import { KitPanel } from './KitPanel'
+import { SkillsMarketView } from './SkillsMarketView'
 
 interface DashboardProps {
   skills: Skill[]
@@ -48,7 +49,8 @@ export function Dashboard({
   kits,
 }: DashboardProps) {
   const searchParams = useSearchParams()
-  const currentView = searchParams.get('view') || 'inventory-skills'
+  const rawView = searchParams.get('view') || 'inventory-skills'
+  const currentView = rawView === 'deploy' ? 'inventory-skills' : rawView
   const currentId = searchParams.get('id')
 
   const viewContext: ViewContext = { view: currentView, id: currentId }
@@ -95,27 +97,31 @@ export function Dashboard({
 
   const title =
     currentView === 'inventory-providers'
-      ? 'Inventory / Providers'
+      ? 'Providers'
       : currentView === 'inventory-skills' || currentView === 'all'
-        ? 'Inventory / Skills'
-        : currentView === 'inventory-kit'
-          ? 'Inventory / Kit'
+        ? 'Skills'
+      : currentView === 'inventory-kit'
+          ? 'Kit'
           : currentView === 'projects'
             ? 'Projects'
-            : currentView === 'deploy'
-              ? 'Deploy'
-              : currentView === 'hub'
-                ? 'Inventory / Skills / Hub'
+            : currentView === 'hub'
+                ? 'Hub'
                 : currentView === 'agent'
-                  ? `Projects / Agent / ${currentId}`
+                  ? currentId || 'Agent'
                   : currentView === 'introduction'
                     ? 'Introduction'
+                    : currentView === 'skills-market'
+                      ? 'Skills Market'
                     : currentView === 'detail'
                       ? 'Skill Details'
-                      : 'Projects / Skills'
+                      : 'Skills'
 
   if (currentView === 'introduction') {
     return <IntroductionView />
+  }
+
+  if (currentView === 'skills-market') {
+    return <SkillsMarketView />
   }
 
   if (currentView === 'detail') {
@@ -188,34 +194,6 @@ export function Dashboard({
     )
   }
 
-  if (currentView === 'deploy') {
-    return (
-      <div className="container py-8 space-y-6">
-        <h1 className="text-3xl font-bold">{title}</h1>
-        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
-          <div className="text-sm text-gray-600">
-            推荐先在 Inventory / Providers 确认账号，再进入 Inventory / Kit 组合并应用 Skills +
-            AGENTS.md。
-          </div>
-          <div className="grid md:grid-cols-3 gap-3">
-            {Object.entries(currentProviders).map(([appType, provider]) => (
-              <div key={appType} className="rounded border border-gray-200 p-3">
-                <div className="text-xs uppercase tracking-wide text-gray-500">{appType}</div>
-                <div className="font-medium mt-1">{provider?.name || 'Not selected'}</div>
-              </div>
-            ))}
-          </div>
-          <Link
-            href="/?view=inventory-providers"
-            className="inline-block px-3 py-1.5 text-sm bg-[#d97757] text-white rounded-md"
-          >
-            Open Provider Inventory
-          </Link>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="container py-8">
       <div className="flex justify-between items-center mb-6">
@@ -228,7 +206,7 @@ export function Dashboard({
               </div>
             )}
           </div>
-          {(currentView === 'hub' || currentView === 'inventory-skills') && (
+          {currentView === 'hub' && (
             <div className="flex gap-2">
               <button
                 onClick={() => setIsCreateModalOpen(true)}

@@ -41,7 +41,6 @@ hello
       await attachSkillImportMetadata(skillDir, {
         sourceRepo: 'https://github.com/owner/repo',
         sourceUrl,
-        sourceBranch: 'main',
         sourceSubdir: 'skills/demo',
         sourceLastUpdated: '2026-01-01T00:00:00.000Z',
         importedAt: '2026-02-01T00:00:00.000Z',
@@ -51,7 +50,7 @@ hello
       const parsed = matter(saved)
       expect(parsed.data['source_repo']).toBe('https://github.com/owner/repo')
       expect(parsed.data['source_url']).toBe(sourceUrl)
-      expect(parsed.data['source_branch']).toBe('main')
+      expect(parsed.data['source_branch']).toBeUndefined()
       expect(parsed.data['source_subdir']).toBe('skills/demo')
       expect(parsed.data['source_last_updated']).toBe('2026-01-01T00:00:00.000Z')
       expect(parsed.data['imported_at']).toBe('2026-02-01T00:00:00.000Z')

@@ -22,11 +22,11 @@ const { promptMock, confirmMock, actionMocks } = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('next/link', () => ({
+vi.mock('@/apps/desktop-ui/src/shims/link', () => ({
   default: ({ children }: { children: ReactNode }) => <a>{children}</a>,
 }))
 
-vi.mock('next/navigation', () => ({
+vi.mock('@/apps/desktop-ui/src/shims/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }))
 
@@ -37,7 +37,7 @@ vi.mock('@/components/ConfirmProvider', () => ({
   }),
 }))
 
-vi.mock('@/app/actions', () => ({
+vi.mock('@/apps/desktop-ui/src/tauri-actions', () => ({
   actionAddProject: actionMocks.actionAddProject,
   actionRemoveProject: actionMocks.actionRemoveProject,
   actionAddScanRoot: actionMocks.actionAddScanRoot,

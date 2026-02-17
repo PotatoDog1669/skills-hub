@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/test-results/
+/playwright-report/
 
 # next.js
 /.next/
@@ -19,10 +21,15 @@
 
 # production
 /build
+/dist
+/release
+/src-tauri/target
+/apps/desktop-ui/dist
 
 # misc
 .DS_Store
 *.pem
+*.tgz
 
 # debug
 npm-debug.log*
@@ -40,4 +47,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+.turbo/
+.eslintcache
 .spec/

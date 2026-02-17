@@ -1,24 +1,16 @@
 #!/usr/bin/env node
 'use strict';
 
-const fs = require('fs');
 const fsPromises = require('fs/promises');
 const fse = require('fs-extra');
 const path = require('path');
-const http = require('http');
 const os = require('os');
 const simpleGit = require('simple-git');
 const matter = require('gray-matter');
-const { spawn } = require('child_process');
-const net = require('net');
 
 const args = process.argv.slice(2);
-const commands = new Set(['import', 'list', 'sync', 'provider']);
+const commands = new Set(['import', 'list', 'sync', 'provider', 'kit']);
 const flagsWithValues = new Set([
-    '-p',
-    '--port',
-    '-H',
-    '--host',
     '-b',
     '--branch',
     '--target',
@@ -38,8 +30,18 @@ const flagsWithValues = new Set([
     '--gemini-model',
     '--config-json',
     '--config-file',
+    '--policy-id',
+    '--loadout-id',
+    '--description',
+    '--skills',
+    '--project',
+    '--agent',
+    '--mode',
+    '--content',
+    '--content-file',
 ]);
 let providerCorePromise = null;
+let kitServicePromise = null;
 
 let command = null;
 let commandIndex = -1;
@@ -86,15 +88,12 @@ if (command) {
         process.exit(1);
     });
 } else {
-    startServer(args).catch((error) => {
-        console.error(`Failed to start server: ${error.message}`);
-        process.exit(1);
-    });
+    printHelp();
+    process.exit(1);
 }
 
 function printHelp() {
     console.log(`Usage:
-  skills-hub [options]
   skills-hub <command> [options]
 
 Commands:
@@ -102,6 +101,7 @@ Commands:
   list                               List skills in the hub directory
   sync --all | --target <name>       Sync hub skills to agent targets
   provider <subcommand>              Manage provider profiles and switching
+  kit <subcommand>                   Manage AGENTS templates, loadouts, and kits
 
 Provider subcommands:
   provider list [--app <app>]                                List providers
@@ -117,10 +117,21 @@ Provider subcommands:
   provider universal-apply --id <universalProviderId>        Apply universal provider to enabled apps
   provider universal-delete --id <universalProviderId>       Delete universal provider
 
-Server options:
-  -p, --port <port>   Port to run the server (default: 3000)
-  -H, --host <host>   Host to bind (default: 127.0.0.1)
-  --no-open           Do not open the browser automatically
+Kit subcommands:
+  kit policy-list
+  kit policy-add --name <name> [--description <text>] (--content <text> | --content-file <path>)
+  kit policy-update --id <id> [--name <name>] [--description <text>] [--content <text>|--content-file <path>]
+  kit policy-delete --id <id>
+  kit loadout-list
+  kit loadout-add --name <name> --skills <path1,path2,...> [--description <text>] [--mode copy|link]
+  kit loadout-update --id <id> [--name <name>] [--description <text>] [--skills <path1,path2,...>] [--mode copy|link]
+  kit loadout-delete --id <id>
+  kit list
+  kit add --name <name> --policy-id <id> --loadout-id <id> [--description <text>]
+  kit update --id <id> [--name <name>] [--policy-id <id>] [--loadout-id <id>] [--description <text>]
+  kit delete --id <id>
+  kit apply --id <id> --project <path> --agent <name> [--mode copy|link] [--overwrite-agents-md]
+
   -v, --version       Show version number
   -h, --help          Show this help message
 `);
@@ -220,11 +231,11 @@ async function attachSkillImportMetadata(skillDirPath, metadata) {
 
     const rawContent = await fsPromises.readFile(skillMdPath, 'utf-8');
     const parsed = matter(rawContent);
+    const { source_branch: _ignoredSourceBranch, ...restFrontmatter } = parsed.data || {};
     const nextFrontmatter = {
-        ...parsed.data,
+        ...restFrontmatter,
         source_repo: metadata.sourceRepo,
         source_url: metadata.sourceUrl,
-        source_branch: metadata.sourceBranch,
         source_subdir: metadata.sourceSubdir || '/',
         source_last_updated: metadata.sourceLastUpdated,
         imported_at: metadata.importedAt,
@@ -248,6 +259,9 @@ async function runCommand(commandName, commandArgs) {
         case 'provider':
             await handleProvider(commandArgs);
             return;
+        case 'kit':
+            await handleKit(commandArgs);
+            return;
         default:
             console.error(`Unknown command: ${commandName}`);
             process.exit(1);
@@ -259,6 +273,13 @@ function loadProviderCore() {
         providerCorePromise = import('../lib/core/provider-core.mjs');
     }
     return providerCorePromise;
+}
+
+function loadKitService() {
+    if (!kitServicePromise) {
+        kitServicePromise = import('../lib/services/kit-service.mjs');
+    }
+    return kitServicePromise;
 }
 
 function parseJsonArg(jsonText) {
@@ -309,6 +330,56 @@ function readProviderProfileArgs(commandArgs, defaultKind = 'api') {
     };
 }
 
+function hasFlag(argv, flag) {
+    return argv.includes(flag);
+}
+
+function normalizeKitMode(modeRaw) {
+    if (!modeRaw) return 'copy';
+    const normalized = String(modeRaw).trim().toLowerCase();
+    if (normalized === 'copy' || normalized === 'link') {
+        return normalized;
+    }
+    throw new Error(`Invalid --mode value: ${modeRaw}. Use copy or link.`);
+}
+
+function parseSkillsArg(skillsRaw) {
+    if (!skillsRaw || !skillsRaw.trim()) {
+        throw new Error('Missing --skills value.');
+    }
+
+    const skillPaths = skillsRaw
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+
+    if (skillPaths.length === 0) {
+        throw new Error('At least one skill path is required in --skills.');
+    }
+
+    return Array.from(new Set(skillPaths));
+}
+
+async function readContentFromArgs(commandArgs) {
+    const content = readArgValue(commandArgs, '--content');
+    const contentFile = readArgValue(commandArgs, '--content-file');
+
+    if (content && contentFile) {
+        throw new Error('Use either --content or --content-file, not both.');
+    }
+
+    if (contentFile) {
+        const resolved = path.resolve(contentFile);
+        return fsPromises.readFile(resolved, 'utf-8');
+    }
+
+    if (content) {
+        return content;
+    }
+
+    return undefined;
+}
+
 function readUniversalApps(commandArgs) {
     const raw = readArgValue(commandArgs, '--apps');
     if (!raw) {
@@ -353,6 +424,249 @@ function printProviderRow(provider) {
 function printUniversalProviderRow(provider) {
     const enabledApps = ['claude', 'codex', 'gemini'].filter((app) => provider.apps?.[app]).join(',');
     console.log(`- ${provider.id} | ${provider.name} | ${provider.baseUrl} | apps=${enabledApps || 'none'}`);
+}
+
+function printKitPolicyRow(policy) {
+    console.log(`- ${policy.id} | ${policy.name}${policy.description ? ` | ${policy.description}` : ''}`);
+}
+
+function printKitLoadoutRow(loadout) {
+    console.log(`- ${loadout.id} | ${loadout.name} | skills=${loadout.items.length}`);
+}
+
+function printKitRow(kit) {
+    console.log(`- ${kit.id} | ${kit.name} | policy=${kit.policyId} | loadout=${kit.loadoutId}`);
+}
+
+async function handleKit(commandArgs) {
+    const subcommand = commandArgs[0];
+    if (!subcommand) {
+        throw new Error('Missing kit subcommand. Try: kit policy-list|policy-add|loadout-list|add|apply');
+    }
+
+    const service = await loadKitService();
+
+    switch (subcommand) {
+        case 'policy-list': {
+            const policies = service.listKitPolicies();
+            if (policies.length === 0) {
+                console.log('No AGENTS.md templates found.');
+                return;
+            }
+            policies.forEach(printKitPolicyRow);
+            return;
+        }
+        case 'policy-add': {
+            const rest = commandArgs.slice(1);
+            const name = readArgValue(rest, '--name');
+            const description = readArgValue(rest, '--description');
+            const content = await readContentFromArgs(rest);
+
+            if (!name || !content) {
+                throw new Error('kit policy-add requires --name and one of --content / --content-file');
+            }
+
+            const policy = service.addKitPolicy({
+                name,
+                description: description || undefined,
+                content,
+            });
+            console.log(`Policy created: ${policy.id} (${policy.name})`);
+            return;
+        }
+        case 'policy-update': {
+            const rest = commandArgs.slice(1);
+            const id = readArgValue(rest, '--id');
+            const name = readArgValue(rest, '--name');
+            const description = readArgValue(rest, '--description');
+            const content = await readContentFromArgs(rest);
+
+            if (!id) {
+                throw new Error('kit policy-update requires --id');
+            }
+
+            const policy = service.updateKitPolicy({
+                id,
+                name: name || undefined,
+                description: description || undefined,
+                content: content === undefined ? undefined : content,
+            });
+            console.log(`Policy updated: ${policy.id} (${policy.name})`);
+            return;
+        }
+        case 'policy-delete': {
+            const rest = commandArgs.slice(1);
+            const id = readArgValue(rest, '--id');
+            if (!id) {
+                throw new Error('kit policy-delete requires --id');
+            }
+            const deleted = service.deleteKitPolicy(id);
+            console.log(deleted ? `Deleted policy: ${id}` : `Policy not found: ${id}`);
+            return;
+        }
+        case 'loadout-list': {
+            const loadouts = service.listKitLoadouts();
+            if (loadouts.length === 0) {
+                console.log('No skills packages found.');
+                return;
+            }
+            loadouts.forEach(printKitLoadoutRow);
+            return;
+        }
+        case 'loadout-add': {
+            const rest = commandArgs.slice(1);
+            const name = readArgValue(rest, '--name');
+            const description = readArgValue(rest, '--description');
+            const skillsRaw = readArgValue(rest, '--skills');
+            const mode = normalizeKitMode(readArgValue(rest, '--mode'));
+
+            if (!name || !skillsRaw) {
+                throw new Error('kit loadout-add requires --name and --skills');
+            }
+
+            const skillPaths = parseSkillsArg(skillsRaw);
+            const loadout = service.addKitLoadout({
+                name,
+                description: description || undefined,
+                items: skillPaths.map((skillPath, index) => ({
+                    skillPath,
+                    mode,
+                    sortOrder: index,
+                })),
+            });
+            console.log(`Loadout created: ${loadout.id} (${loadout.name})`);
+            return;
+        }
+        case 'loadout-update': {
+            const rest = commandArgs.slice(1);
+            const id = readArgValue(rest, '--id');
+            const name = readArgValue(rest, '--name');
+            const description = readArgValue(rest, '--description');
+            const skillsRaw = readArgValue(rest, '--skills');
+            const mode = normalizeKitMode(readArgValue(rest, '--mode'));
+
+            if (!id) {
+                throw new Error('kit loadout-update requires --id');
+            }
+
+            const items = skillsRaw
+                ? parseSkillsArg(skillsRaw).map((skillPath, index) => ({
+                    skillPath,
+                    mode,
+                    sortOrder: index,
+                }))
+                : undefined;
+
+            const loadout = service.updateKitLoadout({
+                id,
+                name: name || undefined,
+                description: description || undefined,
+                items,
+            });
+            console.log(`Loadout updated: ${loadout.id} (${loadout.name})`);
+            return;
+        }
+        case 'loadout-delete': {
+            const rest = commandArgs.slice(1);
+            const id = readArgValue(rest, '--id');
+            if (!id) {
+                throw new Error('kit loadout-delete requires --id');
+            }
+            const deleted = service.deleteKitLoadout(id);
+            console.log(deleted ? `Deleted loadout: ${id}` : `Loadout not found: ${id}`);
+            return;
+        }
+        case 'list': {
+            const kits = service.listKits();
+            if (kits.length === 0) {
+                console.log('No kits found.');
+                return;
+            }
+            kits.forEach(printKitRow);
+            return;
+        }
+        case 'add': {
+            const rest = commandArgs.slice(1);
+            const name = readArgValue(rest, '--name');
+            const description = readArgValue(rest, '--description');
+            const policyId = readArgValue(rest, '--policy-id');
+            const loadoutId = readArgValue(rest, '--loadout-id');
+
+            if (!name || !policyId || !loadoutId) {
+                throw new Error('kit add requires --name --policy-id --loadout-id');
+            }
+
+            const kit = service.addKit({
+                name,
+                description: description || undefined,
+                policyId,
+                loadoutId,
+            });
+            console.log(`Kit created: ${kit.id} (${kit.name})`);
+            return;
+        }
+        case 'update': {
+            const rest = commandArgs.slice(1);
+            const id = readArgValue(rest, '--id');
+            const name = readArgValue(rest, '--name');
+            const description = readArgValue(rest, '--description');
+            const policyId = readArgValue(rest, '--policy-id');
+            const loadoutId = readArgValue(rest, '--loadout-id');
+
+            if (!id) {
+                throw new Error('kit update requires --id');
+            }
+
+            const kit = service.updateKit({
+                id,
+                name: name || undefined,
+                description: description || undefined,
+                policyId: policyId || undefined,
+                loadoutId: loadoutId || undefined,
+            });
+            console.log(`Kit updated: ${kit.id} (${kit.name})`);
+            return;
+        }
+        case 'delete': {
+            const rest = commandArgs.slice(1);
+            const id = readArgValue(rest, '--id');
+            if (!id) {
+                throw new Error('kit delete requires --id');
+            }
+            const deleted = service.deleteKit(id);
+            console.log(deleted ? `Deleted kit: ${id}` : `Kit not found: ${id}`);
+            return;
+        }
+        case 'apply': {
+            const rest = commandArgs.slice(1);
+            const kitId = readArgValue(rest, '--id');
+            const projectPath = readArgValue(rest, '--project');
+            const agentName = readArgValue(rest, '--agent');
+            const mode = normalizeKitMode(readArgValue(rest, '--mode'));
+            const overwriteAgentsMd = hasFlag(rest, '--overwrite-agents-md');
+
+            if (!kitId || !projectPath || !agentName) {
+                throw new Error('kit apply requires --id --project --agent');
+            }
+
+            const result = await service.applyKit({
+                kitId,
+                projectPath,
+                agentName,
+                mode,
+                overwriteAgentsMd,
+            });
+
+            const successCount = result.loadoutResults.filter((item) => item.status === 'success').length;
+            console.log(
+                `Kit applied: ${result.kitId} -> ${result.projectPath} (${result.agentName}), ` +
+                `skills=${successCount}, policy=${result.policyPath}`
+            );
+            return;
+        }
+        default:
+            throw new Error(`Unknown kit subcommand: ${subcommand}`);
+    }
 }
 
 async function handleProvider(commandArgs) {
@@ -632,7 +946,6 @@ async function handleImport(commandArgs) {
     await attachSkillImportMetadata(destPath, {
         sourceRepo: repoWebUrl,
         sourceUrl,
-        sourceBranch: downloadResult.resolvedBranch,
         sourceSubdir: subdir,
         sourceLastUpdated: downloadResult.lastUpdatedAt,
         importedAt: new Date().toISOString(),
@@ -780,148 +1093,5 @@ async function downloadRemoteSkill(repoUrl, subdir, destPath, branch) {
         };
     } finally {
         await fse.remove(tempDir);
-    }
-}
-
-function checkPortAvailable(port, host) {
-    return new Promise((resolve) => {
-        const server = net.createServer();
-        server.once('error', (err) => {
-            if (err.code === 'EADDRINUSE') {
-                resolve(false);
-            } else {
-                resolve(false);
-            }
-        });
-        server.once('listening', () => {
-            server.close(() => {
-                resolve(true);
-            });
-        });
-        server.listen(port, host);
-    });
-}
-
-async function findAvailablePort(startPort, host) {
-    let port = startPort;
-    // Check up to 10 ports
-    for (let i = 0; i < 10; i++) {
-        if (await checkPortAvailable(port, host)) {
-            return port;
-        }
-        port++;
-    }
-    // If we can't find one in 10 tries, just return the start port and let it fail naturally
-    return startPort;
-}
-
-async function startServer(serverArgs) {
-    const portValue = readArgValue(serverArgs, '--port', '-p') || process.env.PORT;
-    const hostValue = readArgValue(serverArgs, '--host', '-H') || process.env.HOSTNAME || process.env.HOST;
-    let port = portValue ? Number(portValue) : 3000;
-    const host = hostValue || '127.0.0.1';
-    const shouldOpen = !serverArgs.includes('--no-open') && process.env.NO_OPEN !== '1';
-
-    if (!Number.isFinite(port) || port <= 0) {
-        console.error(`Invalid port: ${portValue}`);
-        process.exit(1);
-    }
-
-    // Resolve port availability
-    const resolvedPort = await findAvailablePort(port, host);
-    if (resolvedPort !== port) {
-        console.log(`Port ${port} is in use, using ${resolvedPort} instead.`);
-        port = resolvedPort;
-    }
-
-    const root = path.resolve(__dirname, '..');
-    const standaloneDir = path.join(root, '.next', 'standalone');
-    const standaloneServer = path.join(standaloneDir, 'server.js');
-
-    if (!fs.existsSync(standaloneServer)) {
-        console.error('Standalone build not found. Run `npm run build` before running skills-hub.');
-        process.exit(1);
-    }
-
-    const child = spawn(process.execPath, ['server.js'], {
-        cwd: standaloneDir,
-        env: {
-            ...process.env,
-            NODE_ENV: process.env.NODE_ENV || 'production',
-            PORT: String(port),
-            HOST: host,
-            HOSTNAME: host,
-        },
-        stdio: 'inherit',
-    });
-
-    const urlHost = host === '0.0.0.0' ? '127.0.0.1' : host;
-    const url = `http://${urlHost}:${port}`;
-
-    waitForServer(url, 30000)
-        .then(() => {
-            console.log(`\nSkills Hub running at ${url}`);
-            if (shouldOpen) {
-                openBrowser(url);
-            }
-        })
-        .catch((error) => {
-            console.error(`Failed to start server: ${error.message}`);
-        });
-
-    child.on('exit', (code) => {
-        process.exit(code == null ? 0 : code);
-    });
-
-    process.on('SIGINT', () => {
-        child.kill('SIGINT');
-    });
-
-    process.on('SIGTERM', () => {
-        child.kill('SIGTERM');
-    });
-}
-
-function waitForServer(url, timeoutMs) {
-    const start = Date.now();
-    return new Promise((resolve, reject) => {
-        const attempt = () => {
-            const req = http.get(url, (res) => {
-                res.resume();
-                resolve();
-            });
-            req.on('error', () => {
-                if (Date.now() - start > timeoutMs) {
-                    reject(new Error(`Timed out waiting for ${url}`));
-                    return;
-                }
-                setTimeout(attempt, 400);
-            });
-        };
-        attempt();
-    });
-}
-
-function openBrowser(url) {
-    const platform = process.platform;
-    let cmd = '';
-    let cmdArgs = [];
-
-    if (platform === 'darwin') {
-        cmd = 'open';
-        cmdArgs = [url];
-    } else if (platform === 'win32') {
-        cmd = 'cmd';
-        cmdArgs = ['/c', 'start', '', url];
-    } else {
-        cmd = 'xdg-open';
-        cmdArgs = [url];
-    }
-
-    try {
-        const opener = spawn(cmd, cmdArgs, { stdio: 'ignore', detached: true });
-        opener.unref();
-    } catch (error) {
-        console.warn(`Failed to open browser: ${error.message}`);
     }
 }

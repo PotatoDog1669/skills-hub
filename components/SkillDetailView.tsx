@@ -1,14 +1,17 @@
 'use client'
 
-import { actionGetSkillContent } from '@/app/actions'
-import { useState, useEffect } from 'react'
+import {
+  actionGetSkillContent,
+  actionOpenExternal,
+} from '@/apps/desktop-ui/src/tauri-actions'
+import { useState, useEffect, type MouseEvent } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { ArrowLeft } from 'lucide-react'
-import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { ArrowLeft, Clock3, ExternalLink, Folder, Github } from 'lucide-react'
+import Link from '@/apps/desktop-ui/src/shims/link'
+import { useSearchParams } from '@/apps/desktop-ui/src/shims/navigation'
 
 interface SkillDetailViewProps {
   path: string
@@ -18,6 +21,59 @@ interface SkillData {
   content: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   metadata: Record<string, any>
+}
+
+const HIDDEN_METADATA_KEYS = new Set([
+  'license',
+  'source_repo',
+  'source_url',
+  'source_branch',
+  'source_subdir',
+  'source_last_updated',
+  'imported_at',
+])
+
+function metadataToText(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function normalizeUrl(url: string): string {
+  const raw = url.trim()
+  if (!raw) return ''
+  if (raw.startsWith('//')) return `https:${raw}`
+  if (/^https?:\/\//i.test(raw)) return raw
+  if (raw.startsWith('github.com/')) return `https://${raw}`
+  return raw
+}
+
+function formatDateLabel(value: string): string {
+  const normalized = value.trim()
+  if (!normalized) return ''
+  const date = new Date(normalized)
+  if (Number.isNaN(date.getTime())) return normalized
+  return date.toLocaleString()
+}
+
+function buildRepoLabel(repoUrl: string): string {
+  if (!repoUrl) return ''
+  try {
+    const parsed = new URL(repoUrl)
+    return parsed.pathname.replace(/^\/+/, '').replace(/\.git$/, '')
+  } catch {
+    return repoUrl
+  }
+}
+
+function isTauriRuntimeClient(): boolean {
+  if (typeof window === 'undefined') return false
+  return Boolean((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__)
 }
 
 export function SkillDetailView({ path }: SkillDetailViewProps) {
@@ -72,9 +128,38 @@ export function SkillDetailView({ path }: SkillDetailViewProps) {
   const { metadata, content } = skillData
 
   // Use metadata description if available, otherwise fallback
-  const description = metadata['description'] || 'Activates when the user needs this skill.'
+  const rawDescription = metadataToText(metadata['description'])
+  const description =
+    rawDescription && !/^[>|]-?$/.test(rawDescription)
+      ? rawDescription
+      : 'Activates when the user needs this skill.'
+  const descriptionLines = description
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
 
   const name = path.split('/').pop() || 'Unknown Skill'
+  const sourceRepo = normalizeUrl(metadataToText(metadata['source_repo']))
+  const sourceUrl = normalizeUrl(metadataToText(metadata['source_url']))
+  const sourceSubdir = metadataToText(metadata['source_subdir'])
+  const sourceLastUpdated = metadataToText(metadata['source_last_updated'])
+  const importedAt = metadataToText(metadata['imported_at'])
+  const sourceLink = sourceUrl || sourceRepo
+  const sourceRepoLabel = buildRepoLabel(sourceRepo)
+  const hasSourceInfo = Boolean(sourceRepo || sourceUrl || sourceSubdir || sourceLastUpdated || importedAt)
+  const pinnedMetadataKeys = ['name', 'description'] as const
+  const pinnedMetadataEntries = pinnedMetadataKeys
+    .map((key) => [key, metadataToText(metadata[key])] as [string, string])
+    .filter(([, value]) => value && !/^[>|]-?$/.test(value))
+  const pinnedMetadataKeySet = new Set<string>(pinnedMetadataEntries.map(([key]) => key))
+
+  const visibleMetadataEntries = [
+    ...pinnedMetadataEntries,
+    ...Object.entries(metadata)
+      .filter(([key]) => !HIDDEN_METADATA_KEYS.has(key) && !pinnedMetadataKeySet.has(key))
+      .map(([key, value]) => [key, metadataToText(value)] as [string, string])
+      .filter(([, value]) => Boolean(value)),
+  ]
 
   const returnView = searchParams.get('returnView') || 'all'
   const returnId = searchParams.get('returnId')
@@ -82,6 +167,22 @@ export function SkillDetailView({ path }: SkillDetailViewProps) {
   // Construct back link
   const backLink =
     returnView === 'all' ? '/' : `/?view=${returnView}${returnId ? `&id=${returnId}` : ''}`
+
+  const breadcrumbPillClass =
+    'flex items-center gap-2 text-muted-foreground bg-muted/50 px-4 py-1.5 rounded-full border border-border/50 shadow-sm'
+
+  const handleExternalOpen = async (event: MouseEvent<HTMLAnchorElement>, url: string) => {
+    if (!isTauriRuntimeClient()) {
+      return
+    }
+
+    event.preventDefault()
+    try {
+      await actionOpenExternal(url)
+    } catch (error) {
+      console.error('Failed to open external URL:', error)
+    }
+  }
 
   return (
     <div className="container max-w-[1400px] py-8 space-y-8 font-mono">
@@ -92,7 +193,7 @@ export function SkillDetailView({ path }: SkillDetailViewProps) {
           <div className="space-y-6">
             {/* Breadcrumb */}
             <div className="flex items-center gap-3 text-sm">
-              <div className="flex items-center gap-2 text-muted-foreground bg-muted/30 px-4 py-1.5 rounded-full border border-border/50 shadow-sm">
+              <div className={breadcrumbPillClass}>
                 <span className="text-green-600 font-bold">$</span>
                 <span>pwd:</span>
                 <span className="text-blue-500">~</span>
@@ -103,24 +204,102 @@ export function SkillDetailView({ path }: SkillDetailViewProps) {
               </div>
               <Link
                 href={backLink}
-                className="px-3 py-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2 border border-transparent hover:border-border"
+                className={`${breadcrumbPillClass} hover:text-foreground transition-colors`}
               >
                 <ArrowLeft size={14} />
                 <span>cd ..</span>
               </Link>
             </div>
 
-            <div className="space-y-4">
-              {/* Title */}
-              <h1 className="text-5xl font-bold tracking-tight text-[#d97757]">{name}</h1>
+            <div
+              className={
+                hasSourceInfo
+                  ? 'grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_24rem] gap-5 lg:items-start'
+                  : 'grid grid-cols-1 gap-5 lg:items-start'
+              }
+            >
+              <div className="space-y-4 min-w-0">
+                {/* Title */}
+                <h1 className="text-5xl font-bold tracking-tight text-[#d97757]">{name}</h1>
 
-              {/* Description */}
-              <div className="text-lg leading-relaxed max-w-3xl text-[#6c6c6c]">
-                <span className="text-[#40a02b]">{'//'}</span> {description}
-                <br />
-                <span className="text-[#40a02b]">{'//'}</span> Use for discovering, retrieving, and
-                installing skills.
+                {/* Description */}
+                <div
+                  className={
+                    hasSourceInfo
+                      ? 'text-lg leading-relaxed max-w-3xl text-[#6c6c6c]'
+                      : 'text-lg leading-relaxed text-[#6c6c6c]'
+                  }
+                >
+                  {descriptionLines.map((line, index) => (
+                    <div key={`${line}-${index}`}>
+                      <span className="text-[#40a02b]">{'//'}</span> {line}
+                    </div>
+                  ))}
+                </div>
               </div>
+
+              {hasSourceInfo && (
+                <div className="w-full lg:max-w-sm lg:justify-self-end rounded-xl border border-[#dbe2ea] bg-white/90 p-4 shadow-sm font-sans">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                      <Github size={15} />
+                      <span>GitHub Source</span>
+                    </div>
+                    {sourceLink && (
+                      <a
+                        href={sourceLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(event) => handleExternalOpen(event, sourceLink)}
+                        className="inline-flex items-center gap-1 text-xs text-[#d97757] hover:underline"
+                      >
+                        Open <ExternalLink size={12} />
+                      </a>
+                    )}
+                  </div>
+
+                  <div className="space-y-2 text-xs text-slate-600">
+                    {sourceRepo && (
+                      <div className="flex items-start gap-2">
+                        <Github size={13} className="mt-0.5 text-slate-400 shrink-0" />
+                        {sourceLink ? (
+                          <a
+                            href={sourceLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(event) => handleExternalOpen(event, sourceLink)}
+                            className="font-mono break-all text-slate-700 hover:text-[#d97757] hover:underline"
+                          >
+                            {sourceRepoLabel || sourceRepo}
+                          </a>
+                        ) : (
+                          <span className="font-mono break-all text-slate-700">
+                            {sourceRepoLabel || sourceRepo}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {sourceSubdir && sourceSubdir !== '/' && (
+                      <div className="flex items-start gap-2">
+                        <Folder size={13} className="mt-0.5 text-slate-400 shrink-0" />
+                        <span className="font-mono break-all">{sourceSubdir}</span>
+                      </div>
+                    )}
+                    {sourceLastUpdated && (
+                      <div className="flex items-start gap-2">
+                        <Clock3 size={13} className="mt-0.5 text-slate-400 shrink-0" />
+                        <span>Updated {formatDateLabel(sourceLastUpdated)}</span>
+                      </div>
+                    )}
+                    {importedAt && (
+                      <div className="flex items-start gap-2">
+                        <Clock3 size={13} className="mt-0.5 text-slate-400 shrink-0" />
+                        <span>Imported {formatDateLabel(importedAt)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -140,19 +319,18 @@ export function SkillDetailView({ path }: SkillDetailViewProps) {
             </div>
 
             {/* Metadata Table (if exists) */}
-            {Object.keys(metadata).length > 0 && (
+            {visibleMetadataEntries.length > 0 && (
               <div className="bg-white px-6 py-8">
-                <div className="rounded-xl border border-[#f3e6e2] overflow-hidden">
+                <div className="rounded-xl border border-[#f3d7c7] overflow-hidden">
                   <table className="w-full text-sm">
                     <tbody>
-                      {Object.entries(metadata).map(([key, value]) => (
-                        <tr key={key} className="border-b border-[#f3e6e2] last:border-0">
-                          <td className="py-4 px-6 font-bold text-[#d97757] w-[220px] bg-[#fff9f8] align-top border-r border-[#f3e6e2]">
+                      {visibleMetadataEntries.map(([key, value]) => (
+                        <tr key={key} className="border-b border-[#f3d7c7] last:border-0">
+                          <td className="py-4 px-6 font-bold text-[#d97757] w-[220px] bg-[#fff9f8] align-top border-r border-[#f3d7c7]">
                             {key}
                           </td>
                           <td className="py-4 px-6 text-slate-700 bg-white leading-relaxed">
-                            {/* Render value, handle objects if necessary or JSON stringify */}
-                            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                            {value}
                           </td>
                         </tr>
                       ))}

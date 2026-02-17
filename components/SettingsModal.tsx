@@ -8,7 +8,7 @@ import {
   actionPickDirectory,
   actionRemoveScanRoot,
   actionScanProjects,
-} from '@/app/actions'
+} from '@/apps/desktop-ui/src/tauri-actions'
 import { X, Trash2, Plus, Terminal, CheckCircle2, AlertCircle } from 'lucide-react'
 import styles from './SyncModal.module.css'
 import { useConfirm } from '@/components/ConfirmProvider'

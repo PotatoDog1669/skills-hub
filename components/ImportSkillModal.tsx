@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import styles from './SyncModal.module.css' // Reusing modal styles
 import { X, Download, GitBranch } from 'lucide-react'
-import { actionImportSkill } from '@/app/actions'
+import { actionImportSkill } from '@/apps/desktop-ui/src/tauri-actions'
 
 interface ImportSkillModalProps {
   isOpen: boolean

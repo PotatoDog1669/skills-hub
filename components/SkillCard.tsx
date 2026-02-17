@@ -1,9 +1,9 @@
 'use client'
 
 import { Skill } from '@/lib/skills-types'
-import Link from 'next/link'
+import Link from '@/apps/desktop-ui/src/shims/link'
 import styles from './SkillCard.module.css'
-import { actionDeleteSkill } from '@/app/actions'
+import { actionDeleteSkill } from '@/apps/desktop-ui/src/tauri-actions'
 import { Share2, Trash2, Layers, Monitor, Folder, Download, Terminal } from 'lucide-react'
 import clsx from 'clsx'
 import { useState } from 'react'
@@ -54,7 +54,7 @@ export function SkillCard({ unifiedSkill, onSync, viewContext }: SkillCardProps)
 
     try {
       setIsCollecting(true)
-      const { actionCollectToHub } = await import('@/app/actions')
+      const { actionCollectToHub } = await import('@/apps/desktop-ui/src/tauri-actions')
       await actionCollectToHub(primaryInstance.path)
     } catch (e) {
       alert('Failed to collect: ' + e)

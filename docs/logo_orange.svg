@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+    <!-- 3D Cube with code symbol -->
+
+    <!-- Top face -->
+    <path d="M100 20 L170 60 L100 100 L30 60 Z" fill="none" stroke="#E16B48" stroke-width="12" stroke-linejoin="round" />
+
+    <!-- Left face -->
+    <path d="M30 60 L100 100 L100 180 L30 140 Z" fill="none" stroke="#E16B48" stroke-width="12"
+        stroke-linejoin="round" />
+
+    <!-- Right face -->
+    <path d="M100 100 L170 60 L170 140 L100 180 Z" fill="none" stroke="#E16B48" stroke-width="12"
+        stroke-linejoin="round" />
+
+    <!-- Code symbol >_ on left face with perspective skew -->
+    <g fill="none" stroke="#E16B48" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" transform="matrix(1, 0.577, 0, 1, 0, 0)">
+        <!-- > (centered vertically roughly around y=85 in unskewed space) -->
+        <path d="M52 78 L62 85 L52 92" />
+        <!-- _ (aligned with baseline) -->
+        <path d="M67 94 L79 94" />
+    </g>
+</svg>

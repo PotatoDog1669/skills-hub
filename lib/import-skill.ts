@@ -13,7 +13,6 @@ export interface ParsedSkillImportUrl {
 export interface SkillImportMetadata {
   sourceRepo: string
   sourceUrl: string
-  sourceBranch: string
   sourceSubdir?: string
   sourceLastUpdated: string
   importedAt: string
@@ -90,12 +89,13 @@ export async function attachSkillImportMetadata(
 
   const rawContent = await fs.readFile(skillMdPath, 'utf-8')
   const parsed = matter(rawContent)
+  const restFrontmatter = { ...(parsed.data as Record<string, unknown>) }
+  delete restFrontmatter.source_branch
 
   const nextFrontmatter: Record<string, unknown> = {
-    ...parsed.data,
+    ...restFrontmatter,
     source_repo: metadata.sourceRepo,
     source_url: metadata.sourceUrl,
-    source_branch: metadata.sourceBranch,
     source_subdir: metadata.sourceSubdir || '/',
     source_last_updated: metadata.sourceLastUpdated,
     imported_at: metadata.importedAt,

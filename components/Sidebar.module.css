@@ -11,21 +11,10 @@
     padding: 1.5rem 1rem;
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
+    overflow: hidden;
 }
 
 
-
-.title {
-    font-size: 1.1rem;
-    font-weight: 600;
-    margin-bottom: 2rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding-left: 0.5rem;
-    font-family: var(--font-geist-mono), monospace;
-}
 
 .section {
     margin-bottom: 2rem;
@@ -129,4 +118,16 @@
 .removeBtn:hover {
     color: var(--destructive);
     background: rgba(239, 68, 68, 0.1);
+}
+
+.projectsScrollable {
+    max-height: 9.5rem;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+}
+
+.agentsScrollable {
+    max-height: 7.25rem;
+    overflow-y: auto;
+    padding-right: 0.25rem;
 }

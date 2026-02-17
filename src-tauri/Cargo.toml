@@ -1,0 +1,24 @@
+[package]
+name = "skills-hub-tauri"
+version = "0.1.9"
+description = "Skills Hub Tauri desktop shell"
+authors = ["Skills Hub"]
+license = "MIT"
+repository = "https://github.com/PotatoDog1669/skills-hub"
+edition = "2021"
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+resvg = "0.45"
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-dialog = "2"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

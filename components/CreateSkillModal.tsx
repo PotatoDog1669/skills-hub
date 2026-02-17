@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import styles from './SyncModal.module.css' // Reuse styles
 import { X, Plus, Save } from 'lucide-react'
-import { actionCreateSkill } from '@/app/actions'
+import { actionCreateSkill } from '@/apps/desktop-ui/src/tauri-actions'
 
 interface CreateSkillModalProps {
   isOpen: boolean
@@ -124,7 +124,7 @@ export function CreateSkillModal({ isOpen, onClose }: CreateSkillModalProps) {
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              className="flex-grow p-3 border rounded bg-slate-50 font-mono text-sm leading-relaxed resize-none focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none"
+              className="flex-grow p-3 border rounded bg-slate-50 font-mono text-sm leading-relaxed resize-none focus:bg-white focus:ring-2 focus:ring-[#f3d7c7] outline-none"
               placeholder="# My Skill..."
               disabled={isLoading}
               spellCheck={false}

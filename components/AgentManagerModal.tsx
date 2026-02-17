@@ -8,7 +8,7 @@ import {
   actionUpdateAgentConfig,
   actionRemoveAgentConfig,
   actionPickDirectory,
-} from '@/app/actions'
+} from '@/apps/desktop-ui/src/tauri-actions'
 
 interface AgentManagerModalProps {
   config: AppConfig
@@ -107,7 +107,7 @@ export function AgentManagerModal({ config, isOpen, onClose }: AgentManagerModal
                   </div>
                   <input
                     type="checkbox"
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    className="h-4 w-4 rounded border-gray-300 text-[#d97757] focus:ring-[#d97757] cursor-pointer"
                     checked={agent.enabled}
                     onChange={() => handleToggle(agent)}
                   />
@@ -165,7 +165,7 @@ export function AgentManagerModal({ config, isOpen, onClose }: AgentManagerModal
                     </button>
                     <button
                       onClick={handleAddCustom}
-                      className="px-2 py-1 bg-blue-600 text-white rounded disabled:opacity-50"
+                      className="px-2 py-1 bg-[#d97757] text-white rounded disabled:opacity-50 hover:bg-[#c05f3e]"
                       disabled={isSubmitting || !newName}
                     >
                       Add Agent
@@ -187,7 +187,7 @@ export function AgentManagerModal({ config, isOpen, onClose }: AgentManagerModal
                   <div className="flex flex-col gap-2">
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      className="h-4 w-4 rounded border-gray-300 text-[#d97757] focus:ring-[#d97757] cursor-pointer"
                       checked={agent.enabled}
                       onChange={() => handleToggle(agent)}
                     />

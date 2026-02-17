@@ -4,7 +4,7 @@ import { Skill } from '@/lib/skills-types'
 import { AppConfig } from '@/lib/config'
 import styles from './SyncModal.module.css'
 import { useEffect, useState } from 'react'
-import { actionSyncSkill } from '@/app/actions'
+import { actionSyncSkill } from '@/apps/desktop-ui/src/tauri-actions'
 import { X, Share2, Folder, Monitor, Copy, Link as LinkIcon } from 'lucide-react'
 
 interface SyncModalProps {
@@ -119,7 +119,7 @@ export function SyncModal({ skill, config, isOpen, onClose }: SyncModalProps) {
                     onChange={() => {}}
                   />
                   {target.type === 'agent' ? (
-                    <Monitor size={14} className="text-blue-500" />
+                    <Monitor size={14} className="text-[#d97757]" />
                   ) : (
                     <Folder size={14} className="text-yellow-500" />
                   )}

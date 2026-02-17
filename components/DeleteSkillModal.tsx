@@ -23,7 +23,6 @@ export function DeleteSkillModal({ skillName, targets, isOpen, onClose, onConfir
         if (isOpen) {
             setSelectedPaths(targets.map(t => t.path));
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
 
     if (!isOpen) return null;
@@ -87,7 +86,7 @@ export function DeleteSkillModal({ skillName, targets, isOpen, onClose, onConfir
 
                                     {/* Icon based on location */}
                                     {target.location === 'hub' && <Layers size={14} className="text-purple-500" />}
-                                    {target.location === 'agent' && <Monitor size={14} className="text-blue-500" />}
+                                    {target.location === 'agent' && <Monitor size={14} className="text-[#d97757]" />}
                                     {target.location === 'project' && <Folder size={14} className="text-yellow-500" />}
 
                                     <div className="flex flex-col min-w-0">

@@ -12,7 +12,7 @@ Skills Hub supports synchronization with a wide range of AI agents. Below is the
 | **Trae**           | `~/.trae/skills`               | `.trae/skills`             |
 | **Windsurf**       | `~/.codeium/windsurf/skills`   | `.windsurf/skills`         |
 | **OpenCode**       | `~/.config/opencode/skill`     | `.opencode/skill`          |
-| **Codex**          | `~/.codex/skills`              | `.codex/skills`            |
+| **Codex**          | `~/.codex/skills`              | `.codex/skills` or `.agents/skills` |
 | **Amp**            | `~/.config/agents/skills`      | `.agents/skills`           |
 | **Kilo Code**      | `~/.kilocode/skills`           | `.kilocode/skills`         |
 | **Roo Code**       | `~/.roo/skills`                | `.roo/skills`              |

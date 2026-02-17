@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Skills Hub",
+  "version": "0.1.9",
+  "identifier": "com.potatodog.skillshub.tauri",
+  "build": {
+    "beforeDevCommand": "npm run tauri:ui:dev",
+    "beforeBuildCommand": "npm run tauri:ui:build",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../apps/desktop-ui/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Skills Hub",
+        "width": 1200,
+        "height": 820,
+        "resizable": true,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.icns",
+      "icons/icon.png"
+    ]
+  }
+}
