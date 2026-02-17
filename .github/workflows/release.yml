@@ -28,9 +28,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Prepare standalone
-        run: node bin/prepare-standalone.js
-
       - name: Generate Changelog
         id: changelog
         uses: mikepenz/release-changelog-builder-action@v4
@@ -50,3 +47,56 @@ jobs:
           npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Update Homebrew tap formula
+        if: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN != '' }}
+        env:
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          HOMEBREW_TAP_REPO: ${{ vars.HOMEBREW_TAP_REPO }}
+        run: |
+          set -euo pipefail
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          PACKAGE_NAME="@potatodog1669/skills-hub"
+          TAP_REPO="${HOMEBREW_TAP_REPO:-PotatoDog1669/homebrew-skillshub}"
+
+          for attempt in {1..12}; do
+            TARBALL_URL="$(npm view "${PACKAGE_NAME}@${VERSION}" dist.tarball --silent || true)"
+            if [ -n "${TARBALL_URL}" ]; then
+              break
+            fi
+            echo "Waiting for npm metadata (${attempt}/12)..."
+            sleep 10
+          done
+
+          if [ -z "${TARBALL_URL:-}" ]; then
+            echo "Failed to resolve npm tarball URL for ${PACKAGE_NAME}@${VERSION}" >&2
+            exit 1
+          fi
+
+          SHA256="$(curl -fsSL "${TARBALL_URL}" | shasum -a 256 | awk '{print $1}')"
+
+          git clone "https://x-access-token:${HOMEBREW_TAP_GITHUB_TOKEN}@github.com/${TAP_REPO}.git" tap-repo
+
+          bash ./scripts/render-homebrew-formula.sh \
+            "${VERSION}" \
+            "${TARBALL_URL}" \
+            "${SHA256}" \
+            "tap-repo/Formula/skills-hub.rb"
+
+          cd tap-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet -- Formula/skills-hub.rb; then
+            echo "Formula already up to date."
+            exit 0
+          fi
+
+          git add Formula/skills-hub.rb
+          git commit -m "skills-hub ${VERSION}"
+          git push origin HEAD
+
+      - name: Homebrew tap update skipped
+        if: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN == '' }}
+        run: echo "::notice::HOMEBREW_TAP_GITHUB_TOKEN not configured; skipping Homebrew tap update."

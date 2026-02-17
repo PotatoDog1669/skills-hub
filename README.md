@@ -4,20 +4,20 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
-  <img src="https://img.shields.io/badge/Next.js-14-black" alt="Next.js">
+  <img src="https://img.shields.io/badge/Tauri-2.x-24C8D8" alt="Tauri">
   <img src="https://img.shields.io/badge/TypeScript-5.0-blue" alt="TypeScript">
   <img src="https://img.shields.io/badge/status-active-success" alt="Status">
 </p>
 
 <p align="center">
-  English | <a href="./README_zh-CN.md">简体中文</a>
+  English | <a href="./README_zh.md">简体中文</a>
 </p>
 
-**Skills Hub** is a centralized management tool for AI Agent Skills, providing a unified workflow for discovery, management, and synchronization via both **Web UI** and **CLI**.
+**Skills Hub** is a centralized management tool for AI Agent Skills, providing a unified workflow for discovery, management, and synchronization via **Tauri Desktop** and **CLI**.
 
 | <img src="docs/dashboard.png" alt="Skills Hub Dashboard" width="100%">                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Skills Hub Web UI** is your local control center for AI skills. It allows you to **visually discover and inspect** your skill library, **import new capabilities** directly from GitHub repositories, and **synchronize** them to your favorite coding agents (Antigravity, Claude, Cursor) with a single click—ensuring your agents always have the latest tools without leaving your local environment. It supports both **Copy** (stable) and **Symbolic Link** (live development) synchronization modes. |
+| **Skills Hub Desktop UI** is your local control center for AI skills. It allows you to **visually discover and inspect** your skill library, **import new capabilities** directly from GitHub repositories, and **synchronize** them to your favorite coding agents (Antigravity, Claude, Cursor) with a single click—ensuring your agents always have the latest tools without leaving your local environment. It supports both **Copy** (stable) and **Symbolic Link** (live development) synchronization modes. |
 
 ## Supported Agents
 
@@ -31,27 +31,75 @@ Skills Hub supports synchronization with a wide range of AI agents, including An
 - Manual project add is also **Git-only**.
 - Path inputs now support a system folder picker first, with manual path input as fallback.
 
-## Getting Started
+## Download & Installation
 
-### Prerequisites
+### System Requirements
 
-- Node.js 18+
+- Node.js 18+ (required for CLI and source builds)
+- Rust toolchain (`rustup`) for Desktop (Tauri) source build
+- Tauri platform prerequisites for your OS: [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/)
 
-### Usage
+### Option A: Homebrew (macOS/Linux)
+
+```bash
+brew tap PotatoDog1669/skillshub
+brew install skills-hub
+skills-hub --version
+```
+
+Upgrade:
+
+```bash
+brew update
+brew upgrade skills-hub
+```
+
+### Option B: CLI via npm
+
+Install globally:
 
 ```bash
 npm i -g @potatodog1669/skills-hub
-skills-hub
+skills-hub --help
 ```
 
-**Options:**
+Run without global install:
 
 ```bash
-skills-hub --port 4000 --host 127.0.0.1   # Custom port and host
-skills-hub --no-open                       # Don't open browser automatically
+npx @potatodog1669/skills-hub --help
 ```
 
-**CLI Commands:**
+Upgrade:
+
+```bash
+npm i -g @potatodog1669/skills-hub@latest
+```
+
+### Option C: Build Desktop App from Source
+
+```bash
+git clone https://github.com/PotatoDog1669/skills-hub.git
+cd skills-hub
+npm ci
+npm run tauri:dev
+```
+
+Create desktop bundles:
+
+```bash
+npm run tauri:build
+```
+
+Output directory:
+- `src-tauri/target/release/bundle/`
+
+### Releases
+
+- Latest releases: [GitHub Releases](https://github.com/PotatoDog1669/skills-hub/releases)
+- Current releases include changelog + source archives (`zipball` / `tarball`).
+- If desktop installer assets are attached to a release, prefer those assets for end users.
+
+## CLI Command Overview
 
 | Command                                   | Description                                                                     |
 | :---------------------------------------- | :------------------------------------------------------------------------------ |
@@ -67,6 +115,9 @@ skills-hub --no-open                       # Don't open browser automatically
 | `skills-hub provider universal-add ...`   | Create one universal API provider and sync to multiple apps                     |
 | `skills-hub provider universal-list`      | List all universal providers                                                    |
 | `skills-hub provider universal-apply ...` | Re-apply a universal provider to enabled apps                                   |
+| `skills-hub kit policy-*`                 | Manage AGENTS.md templates (`policy-list/add/update/delete`)                    |
+| `skills-hub kit loadout-*`                | Manage skill packages (`loadout-list/add/update/delete`)                        |
+| `skills-hub kit add/update/delete/apply`  | Compose Kit and apply it to target project + agent                              |
 
 ### Development
 
@@ -75,11 +126,13 @@ For contributors who want to modify the source code:
 ```bash
 git clone https://github.com/PotatoDog1669/skills-hub.git
 cd skills-hub
-npm install
-npm run dev
+npm ci
+npm run tauri:dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+For maintainers, a reusable release notes template is available at:
+- `docs/release-notes-template.md`
+- `docs/homebrew-tap-setup.md`
 
 ## Contributing
 
