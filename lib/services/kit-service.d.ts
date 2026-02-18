@@ -77,6 +77,23 @@ export interface KitApplyDryRunPreview {
   warnings: string[]
 }
 
+export interface KitApplySnapshotPlan {
+  operation: 'kit-apply'
+  mode: KitSyncMode
+  target: string
+  affectedPaths: string[]
+  projectPath: string
+  agentName: string
+}
+
+export function planKitApplySnapshot(values: {
+  kitId: string
+  projectPath: string
+  agentName: string
+  mode?: KitSyncMode
+  overwriteAgentsMd?: boolean
+}): Promise<KitApplySnapshotPlan>
+
 export function previewKitApply(values: {
   kitId: string
   projectPath: string

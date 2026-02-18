@@ -109,6 +109,9 @@ npm run tauri:build
 | `skills-hub import <url>`                 | 从 GitHub 导入技能（支持指定分支: `--branch main`）                    |
 | `skills-hub sync --all`                   | 将 Hub 技能同步到所有已启用的 Agent (Antigravity, Claude, Cursor 等)   |
 | `skills-hub sync --target <name>`         | 同步到特定 Agent（例如：`--target claude` 同步到 `~/.claude/skills/`） |
+| `skills-hub snapshot list`                | 查看 `sync` / `kit apply` 自动生成的回滚快照                            |
+| `skills-hub snapshot rollback --id <id>`  | 回滚到指定快照                                                           |
+| `skills-hub snapshot rollback --last`     | 回滚到最近一次快照                                                       |
 | `skills-hub provider list`                | 查看 Provider 档案列表（`claude`、`codex`、`gemini`）                  |
 | `skills-hub provider add ...`             | 通过 `--app --name --config-json` 或 `--config-file` 新增 Provider     |
 | `skills-hub provider switch ...`          | 执行 Provider 切换（含 backfill + 备份 + 原子写）                      |
@@ -120,6 +123,12 @@ npm run tauri:build
 | `skills-hub kit policy-*`                 | 管理 AGENTS.md 模板（`policy-list/add/update/delete`）                 |
 | `skills-hub kit loadout-*`                | 管理技能包（`loadout-list/add/update/delete`）                         |
 | `skills-hub kit add/update/delete/apply`  | 组合 Kit 并应用到目标项目 + Agent                                      |
+
+快照默认仅保留最近 20 条，可通过环境变量覆盖：
+
+```bash
+export SKILLS_HUB_SNAPSHOT_RETENTION=30
+```
 
 ### 开发指南
 

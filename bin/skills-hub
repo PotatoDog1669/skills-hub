@@ -9,7 +9,7 @@ const simpleGit = require('simple-git');
 const matter = require('gray-matter');
 
 const args = process.argv.slice(2);
-const commands = new Set(['import', 'list', 'sync', 'provider', 'kit']);
+const commands = new Set(['import', 'list', 'sync', 'snapshot', 'provider', 'kit']);
 const flagsWithValues = new Set([
     '-b',
     '--branch',
@@ -43,6 +43,7 @@ const flagsWithValues = new Set([
 let providerCorePromise = null;
 let kitServicePromise = null;
 let syncServicePromise = null;
+let snapshotServicePromise = null;
 
 let command = null;
 let commandIndex = -1;
@@ -101,8 +102,14 @@ Commands:
   import <url> [--branch <branch>]   Import a skill from a git repository
   list                               List skills in the hub directory
   sync --all | --target <name> [--dry-run]       Sync hub skills to agent targets
+  snapshot <subcommand>              Manage sync/apply snapshots and rollback
   provider <subcommand>              Manage provider profiles and switching
   kit <subcommand>                   Manage AGENTS templates, loadouts, and kits
+
+Snapshot subcommands:
+  snapshot list
+  snapshot rollback --id <snapshotId>
+  snapshot rollback --last
 
 Provider subcommands:
   provider list [--app <app>]                                List providers
@@ -257,6 +264,9 @@ async function runCommand(commandName, commandArgs) {
         case 'sync':
             await handleSync(commandArgs);
             return;
+        case 'snapshot':
+            await handleSnapshot(commandArgs);
+            return;
         case 'provider':
             await handleProvider(commandArgs);
             return;
@@ -288,6 +298,13 @@ function loadSyncService() {
         syncServicePromise = import('../lib/services/sync-service.mjs');
     }
     return syncServicePromise;
+}
+
+function loadSnapshotService() {
+    if (!snapshotServicePromise) {
+        snapshotServicePromise = import('../lib/services/snapshot-service.mjs');
+    }
+    return snapshotServicePromise;
 }
 
 function parseJsonArg(jsonText) {
@@ -461,6 +478,62 @@ function printKitLoadoutRow(loadout) {
 
 function printKitRow(kit) {
     console.log(`- ${kit.id} | ${kit.name} | policy=${kit.policyId} | loadout=${kit.loadoutId}`);
+}
+
+function printSnapshotRow(snapshot) {
+    const affectedCount = Array.isArray(snapshot?.affectedPaths) ? snapshot.affectedPaths.length : 0;
+    console.log(
+        `- ${snapshot.id} | ${snapshot.createdAt} | ${snapshot.operation} | ` +
+        `target=${snapshot.target} | mode=${snapshot.mode} | paths=${affectedCount}`
+    );
+}
+
+async function handleSnapshot(commandArgs) {
+    const subcommand = commandArgs[0];
+    if (!subcommand) {
+        throw new Error('Missing snapshot subcommand. Try: snapshot list|rollback');
+    }
+
+    const snapshotService = await loadSnapshotService();
+
+    switch (subcommand) {
+        case 'list': {
+            const snapshots = await snapshotService.listSnapshots();
+            if (snapshots.length === 0) {
+                console.log('No snapshots found.');
+                return;
+            }
+            snapshots.forEach(printSnapshotRow);
+            return;
+        }
+        case 'rollback': {
+            const rest = commandArgs.slice(1);
+            const snapshotId = readArgValue(rest, '--id');
+            const useLast = hasFlag(rest, '--last');
+
+            if ((snapshotId && useLast) || (!snapshotId && !useLast)) {
+                throw new Error('snapshot rollback requires exactly one of --id <snapshotId> or --last');
+            }
+
+            let resolvedId = snapshotId;
+            if (useLast) {
+                const latest = await snapshotService.getLatestSnapshot();
+                if (!latest) {
+                    throw new Error('No snapshots available for rollback.');
+                }
+                resolvedId = latest.id;
+            }
+
+            const result = await snapshotService.rollbackSnapshot({ id: resolvedId });
+            console.log(
+                `Snapshot rolled back: ${result.id} | op=${result.operation} | ` +
+                `restored=${result.restoredPaths} | removed=${result.removedPaths} | total=${result.totalPaths}`
+            );
+            return;
+        }
+        default:
+            throw new Error(`Unknown snapshot subcommand: ${subcommand}`);
+    }
 }
 
 async function handleKit(commandArgs) {
@@ -686,6 +759,24 @@ async function handleKit(commandArgs) {
                 printDryRunPreview(preview);
                 return;
             }
+
+            const config = await loadConfig();
+            const snapshotService = await loadSnapshotService();
+            const snapshotPlan = await service.planKitApplySnapshot({
+                kitId,
+                projectPath,
+                agentName,
+                mode,
+                overwriteAgentsMd,
+            });
+            const snapshot = await snapshotService.createSnapshot({
+                operation: snapshotPlan.operation,
+                target: snapshotPlan.target,
+                mode: snapshotPlan.mode,
+                affectedPaths: snapshotPlan.affectedPaths,
+                retention: snapshotService.resolveSnapshotRetention(config.snapshotRetention),
+            });
+            console.log(`Snapshot created: ${snapshot.id} (paths=${snapshot.affectedPaths.length})`);
 
             const result = await service.applyKit({
                 kitId,
@@ -930,19 +1021,50 @@ async function handleSync(commandArgs) {
     }
 
     const syncService = await loadSyncService();
+    const snapshotService = dryRun ? null : await loadSnapshotService();
     const skills = await fsPromises.readdir(hubPath);
+    const skillDirectories = [];
+    for (const skill of skills) {
+        const skillSource = path.join(hubPath, skill);
+        const stat = await fse.stat(skillSource);
+        if (!stat.isDirectory()) continue;
+        skillDirectories.push({
+            name: skill,
+            sourcePath: skillSource,
+        });
+    }
+
     const preview = {
         action: 'sync',
         dryRun: true,
         mode: 'copy',
         targetCount: targetAgents.length,
-        skillCount: skills.length,
+        skillCount: skillDirectories.length,
         changes: [],
         summary: { total: 0, add: 0, update: 0, delete: 0, link: 0 },
     };
 
     if (!dryRun) {
-        console.log(`Found ${skills.length} skills in Hub. Syncing to ${targetAgents.length} agents...`);
+        if (skillDirectories.length > 0) {
+            const affectedPaths = [];
+            for (const agent of targetAgents) {
+                const destRoot = expandHome(agent.globalPath);
+                for (const skill of skillDirectories) {
+                    affectedPaths.push(path.join(destRoot, skill.name));
+                }
+            }
+
+            const snapshot = await snapshotService.createSnapshot({
+                operation: 'sync',
+                target: targetAgents.map((agent) => agent.name).join(', '),
+                mode: 'copy',
+                affectedPaths,
+                retention: snapshotService.resolveSnapshotRetention(config.snapshotRetention),
+            });
+            console.log(`Snapshot created: ${snapshot.id} (paths=${snapshot.affectedPaths.length})`);
+        }
+
+        console.log(`Found ${skillDirectories.length} skills in Hub. Syncing to ${targetAgents.length} agents...`);
     }
 
     for (const agent of targetAgents) {
@@ -954,29 +1076,25 @@ async function handleSync(commandArgs) {
             await fse.ensureDir(destRoot);
         }
 
-        for (const skill of skills) {
-            const skillSource = path.join(hubPath, skill);
-            const stat = await fse.stat(skillSource);
-            if (!stat.isDirectory()) continue;
-
+        for (const skill of skillDirectories) {
             try {
                 if (dryRun) {
                     const planned = await syncService.previewSkillSync({
-                        sourcePath: skillSource,
+                        sourcePath: skill.sourcePath,
                         destParentPath: destRoot,
                         mode: 'copy',
                     });
                     preview.changes.push(...planned.changes);
                 } else {
                     const synced = await syncService.syncSkill({
-                        sourcePath: skillSource,
+                        sourcePath: skill.sourcePath,
                         destParentPath: destRoot,
                         mode: 'copy',
                     });
-                    console.log(`  [OK] ${skill} -> ${synced.destination}`);
+                    console.log(`  [OK] ${skill.name} -> ${synced.destination}`);
                 }
             } catch (error) {
-                console.error(`  [ERR] Failed to sync ${skill}:`, error);
+                console.error(`  [ERR] Failed to sync ${skill.name}:`, error);
             }
         }
     }
@@ -1058,8 +1176,17 @@ function buildDefaultConfig() {
         hubPath: path.join(os.homedir(), 'skills-hub'),
         projects: [],
         scanRoots: [path.join(os.homedir(), 'workspace')],
+        snapshotRetention: 20,
         agents: buildDefaultAgents(),
     };
+}
+
+function normalizeSnapshotRetentionValue(value, fallback = 20) {
+    const parsed = Number.parseInt(String(value ?? '').trim(), 10);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        return fallback;
+    }
+    return parsed;
 }
 
 async function loadConfig() {
@@ -1089,6 +1216,10 @@ async function loadConfig() {
         return {
             ...defaultConfig,
             ...userConfig,
+            snapshotRetention: normalizeSnapshotRetentionValue(
+                userConfig.snapshotRetention,
+                defaultConfig.snapshotRetention
+            ),
             agents: [...mergedAgents, ...customAgents],
         };
     } catch {

@@ -37,6 +37,8 @@
     "lib/services/kit-service.d.ts",
     "lib/services/sync-service.mjs",
     "lib/services/sync-service.d.ts",
+    "lib/services/snapshot-service.mjs",
+    "lib/services/snapshot-service.d.ts",
     "README.md",
     "LICENSE"
   ],

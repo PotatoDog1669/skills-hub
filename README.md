@@ -107,6 +107,9 @@ Output directory:
 | `skills-hub import <url>`                 | Import a skill from GitHub (supports branch: `--branch main`)                   |
 | `skills-hub sync --all`                   | Sync Hub skills to all enabled agents (Antigravity, Claude, Cursor, etc.)       |
 | `skills-hub sync --target <name>`         | Sync to a specific agent (e.g., `--target claude` syncs to `~/.claude/skills/`) |
+| `skills-hub snapshot list`                | List rollback snapshots created before `sync` / `kit apply`                      |
+| `skills-hub snapshot rollback --id <id>`  | Roll back to a specific snapshot                                                  |
+| `skills-hub snapshot rollback --last`     | Roll back to the latest snapshot                                                  |
 | `skills-hub provider list`                | List provider profiles (`claude`, `codex`, `gemini`)                            |
 | `skills-hub provider add ...`             | Add a provider with `--app --name --config-json` or `--config-file`             |
 | `skills-hub provider switch ...`          | Switch current provider with backfill + backup + atomic write                   |
@@ -118,6 +121,12 @@ Output directory:
 | `skills-hub kit policy-*`                 | Manage AGENTS.md templates (`policy-list/add/update/delete`)                    |
 | `skills-hub kit loadout-*`                | Manage skill packages (`loadout-list/add/update/delete`)                        |
 | `skills-hub kit add/update/delete/apply`  | Compose Kit and apply it to target project + agent                              |
+
+Snapshot retention keeps the latest 20 entries by default. Override with:
+
+```bash
+export SKILLS_HUB_SNAPSHOT_RETENTION=30
+```
 
 ### Development
 
