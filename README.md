@@ -122,6 +122,8 @@ Output directory:
 | `skills-hub kit policy-*`                 | Manage AGENTS.md templates (`policy-list/add/update/delete`)                    |
 | `skills-hub kit loadout-*`                | Manage skill packages (`loadout-list/add/update/delete`)                        |
 | `skills-hub kit add/update/delete/apply`  | Compose Kit and apply it to target project + agent                              |
+| `skills-hub profile list/add/update/delete` | Manage project profile bindings (`project -> kit/provider`)                    |
+| `skills-hub profile apply ...`            | Apply project/default profile to target project (kit + provider switch)         |
 
 Snapshot retention keeps the latest 20 entries by default. Override with:
 

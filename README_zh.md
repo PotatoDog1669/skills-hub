@@ -124,6 +124,8 @@ npm run tauri:build
 | `skills-hub kit policy-*`                 | 管理 AGENTS.md 模板（`policy-list/add/update/delete`）                 |
 | `skills-hub kit loadout-*`                | 管理技能包（`loadout-list/add/update/delete`）                         |
 | `skills-hub kit add/update/delete/apply`  | 组合 Kit 并应用到目标项目 + Agent                                      |
+| `skills-hub profile list/add/update/delete` | 管理项目级 Profile 绑定（`项目 -> kit/provider`）                    |
+| `skills-hub profile apply ...`            | 对目标项目应用项目/全局默认 Profile（Kit + Provider 切换）            |
 
 快照默认仅保留最近 20 条，可通过环境变量覆盖：
 
