@@ -34,6 +34,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           PACKAGE_VERSION="$(node -p "require('./package.json').version")"
           TAURI_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('./src-tauri/tauri.conf.json', 'utf8')).version")"
+          CARGO_VERSION="$(awk -F'\"' '/^version =/ { print $2; exit }' ./src-tauri/Cargo.toml)"
 
           if [ "${PACKAGE_VERSION}" != "${VERSION}" ]; then
             echo "package.json version ${PACKAGE_VERSION} does not match tag ${VERSION}" >&2
@@ -42,6 +43,11 @@ jobs:
 
           if [ "${TAURI_VERSION}" != "${VERSION}" ]; then
             echo "src-tauri/tauri.conf.json version ${TAURI_VERSION} does not match tag ${VERSION}" >&2
+            exit 1
+          fi
+
+          if [ "${CARGO_VERSION}" != "${VERSION}" ]; then
+            echo "src-tauri/Cargo.toml version ${CARGO_VERSION} does not match tag ${VERSION}" >&2
             exit 1
           fi
 
