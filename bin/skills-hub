@@ -9,7 +9,7 @@ const simpleGit = require('simple-git');
 const matter = require('gray-matter');
 
 const args = process.argv.slice(2);
-const commands = new Set(['import', 'list', 'sync', 'snapshot', 'provider', 'kit']);
+const commands = new Set(['import', 'list', 'diagnose', 'scan-projects', 'sync', 'snapshot', 'provider', 'kit', 'profile', 'conflicts']);
 const flagsWithValues = new Set([
     '-b',
     '--branch',

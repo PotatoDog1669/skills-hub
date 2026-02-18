@@ -30,6 +30,7 @@ Skills Hub supports synchronization with a wide range of AI agents, including An
 - Auto scan is **Git-only**: Scan Roots only add directories that are inside a Git work tree.
 - Manual project add is also **Git-only**.
 - Path inputs now support a system folder picker first, with manual path input as fallback.
+- CLI supports incremental scan cache at `~/.skills-hub/cache/project-scan.json` via `skills-hub scan-projects` (`--force` bypasses cache).
 
 ## Download & Installation
 

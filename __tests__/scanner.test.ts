@@ -1,19 +1,31 @@
 // @vitest-environment node
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs-extra'
 import os from 'os'
 import path from 'path'
-import { scanForProjects } from '@/lib/scanner'
+import { getProjectScanCachePath, scanForProjects } from '@/lib/scanner'
 
 describe('scanForProjects', () => {
   let tempRoot: string
+  let tempHome: string
+  let originalHome: string | undefined
 
   beforeEach(async () => {
     tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'skills-hub-scanner-'))
+    tempHome = path.join(tempRoot, 'home')
+    await fs.ensureDir(tempHome)
+    originalHome = process.env.HOME
+    process.env.HOME = tempHome
   })
 
   afterEach(async () => {
+    vi.restoreAllMocks()
+    if (originalHome === undefined) {
+      delete process.env.HOME
+    } else {
+      process.env.HOME = originalHome
+    }
     await fs.remove(tempRoot)
   })
 
@@ -56,5 +68,46 @@ describe('scanForProjects', () => {
 
     const projects = await scanForProjects([tempRoot])
     expect(projects).not.toContain(path.resolve(deepRepo))
+  })
+
+  it('writes and reuses cache entries for unchanged directories', async () => {
+    const repoPath = path.join(tempRoot, 'repo-cache')
+    await fs.ensureDir(path.join(repoPath, '.git'))
+
+    const readdirSpy = vi.spyOn(fs, 'readdir')
+
+    const firstScan = await scanForProjects([tempRoot])
+    const firstReaddirCount = readdirSpy.mock.calls.length
+
+    const secondScan = await scanForProjects([tempRoot])
+    const secondReaddirCount = readdirSpy.mock.calls.length - firstReaddirCount
+
+    expect(firstScan).toContain(path.resolve(repoPath))
+    expect(secondScan).toEqual(firstScan)
+    expect(firstReaddirCount).toBeGreaterThan(0)
+    expect(secondReaddirCount).toBeLessThan(firstReaddirCount)
+
+    const cachePath = getProjectScanCachePath()
+    const cacheContent = await fs.readJson(cachePath)
+    const rootKey = path.resolve(tempRoot)
+    expect(cacheContent.roots[rootKey]).toBeDefined()
+    expect(cacheContent.roots[rootKey].directories[rootKey]).toBeDefined()
+  })
+
+  it('bypasses cache when force is enabled', async () => {
+    const repoPath = path.join(tempRoot, 'repo-force')
+    await fs.ensureDir(path.join(repoPath, '.git'))
+    await scanForProjects([tempRoot])
+
+    const readdirSpy = vi.spyOn(fs, 'readdir')
+
+    await scanForProjects([tempRoot])
+    const nonForceCalls = readdirSpy.mock.calls.length
+
+    await scanForProjects([tempRoot], { force: true })
+    const forceCalls = readdirSpy.mock.calls.length - nonForceCalls
+
+    expect(nonForceCalls).toBe(0)
+    expect(forceCalls).toBeGreaterThan(0)
   })
 })
