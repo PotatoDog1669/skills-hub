@@ -1,6 +1,6 @@
 # Homebrew Tap Setup (Maintainers)
 
-This project can auto-update a Homebrew formula after each tagged release.
+This project can auto-update Homebrew formula/cask files after each tagged release.
 
 ## 1) Create Tap Repository
 
@@ -12,6 +12,8 @@ Directory structure:
 
 ```text
 Formula/
+  skills-hub.rb
+Casks/
   skills-hub.rb
 ```
 
@@ -29,15 +31,26 @@ In this repository (`skills-hub`) set:
 
 When tag `v*` is pushed:
 
-1. Publish npm package.
-2. Resolve npm tarball for the new version.
-3. Compute tarball SHA256.
-4. Render `Formula/skills-hub.rb`.
-5. Commit and push formula update to tap repo.
+1. Build and upload macOS desktop DMG assets (Apple Silicon + Intel) to GitHub Release.
+2. Publish npm package.
+3. Resolve npm tarball for the new version.
+4. Compute SHA256 for npm tarball + both DMG assets.
+5. Render `Formula/skills-hub.rb` (CLI).
+6. Render `Casks/skills-hub.rb` (Desktop app).
+7. Commit and push tap updates.
 
 ## 4) User Install Commands
+
+Install CLI:
 
 ```bash
 brew tap PotatoDog1669/skillshub
 brew install skills-hub
+```
+
+Install Desktop app:
+
+```bash
+brew tap PotatoDog1669/skillshub
+brew install --cask skills-hub
 ```

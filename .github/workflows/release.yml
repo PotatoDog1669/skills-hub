@@ -3,13 +3,87 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
   contents: write
 
 jobs:
+  build-desktop-macos:
+    name: Build desktop macOS (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: aarch64
+          - runner: macos-13
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate release versions
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          TAURI_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('./src-tauri/tauri.conf.json', 'utf8')).version")"
+
+          if [ "${PACKAGE_VERSION}" != "${VERSION}" ]; then
+            echo "package.json version ${PACKAGE_VERSION} does not match tag ${VERSION}" >&2
+            exit 1
+          fi
+
+          if [ "${TAURI_VERSION}" != "${VERSION}" ]; then
+            echo "src-tauri/tauri.conf.json version ${TAURI_VERSION} does not match tag ${VERSION}" >&2
+            exit 1
+          fi
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build macOS desktop bundle
+        run: npm run tauri:build -- --bundles dmg
+
+      - name: Prepare desktop artifact
+        id: artifact
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          SOURCE_DMG="$(find src-tauri/target/release/bundle -type f -name "Skills Hub_*_${TARGET_ARCH}.dmg" | head -n 1 || true)"
+
+          if [ -z "${SOURCE_DMG}" ]; then
+            echo "Unable to locate DMG for ${TARGET_ARCH}" >&2
+            find src-tauri/target/release/bundle -type f -name "*.dmg" -print
+            exit 1
+          fi
+
+          mkdir -p release-assets
+          TARGET_DMG="release-assets/skills-hub_${VERSION}_macos_${TARGET_ARCH}.dmg"
+          cp "${SOURCE_DMG}" "${TARGET_DMG}"
+          echo "asset_path=${TARGET_DMG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload desktop artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: skills-hub-dmg-${{ matrix.arch }}
+          path: ${{ steps.artifact.outputs.asset_path }}
+          if-no-files-found: error
+
   release:
+    needs:
+      - build-desktop-macos
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,8 +93,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
 
       - name: Install dependencies
         run: npm ci
@@ -28,11 +102,24 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: skills-hub-dmg-*
+          path: release-assets
+          merge-multiple: true
+
       - name: Generate Changelog
         id: changelog
         uses: mikepenz/release-changelog-builder-action@v4
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare release metadata
+        id: metadata
+        run: |
+          set -euo pipefail
+          echo "version=${GITHUB_REF_NAME#v}" >> "${GITHUB_OUTPUT}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
@@ -40,6 +127,9 @@ jobs:
           body: ${{ steps.changelog.outputs.changelog }}
           draft: false
           prerelease: false
+          files: |
+            release-assets/skills-hub_${{ steps.metadata.outputs.version }}_macos_aarch64.dmg
+            release-assets/skills-hub_${{ steps.metadata.outputs.version }}_macos_x64.dmg
 
       - name: Publish to npm
         run: |
@@ -63,6 +153,8 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           PACKAGE_NAME="@potatodog1669/skills-hub"
           TAP_REPO="${HOMEBREW_TAP_REPO:-PotatoDog1669/homebrew-skillshub}"
+          ARM64_DMG="release-assets/skills-hub_${VERSION}_macos_aarch64.dmg"
+          X64_DMG="release-assets/skills-hub_${VERSION}_macos_x64.dmg"
 
           for attempt in {1..12}; do
             TARBALL_URL="$(npm view "${PACKAGE_NAME}@${VERSION}" dist.tarball --silent || true)"
@@ -79,6 +171,8 @@ jobs:
           fi
 
           SHA256="$(curl -fsSL "${TARBALL_URL}" | shasum -a 256 | awk '{print $1}')"
+          ARM64_SHA256="$(shasum -a 256 "${ARM64_DMG}" | awk '{print $1}')"
+          X64_SHA256="$(shasum -a 256 "${X64_DMG}" | awk '{print $1}')"
 
           git clone "https://x-access-token:${HOMEBREW_TAP_GITHUB_TOKEN}@github.com/${TAP_REPO}.git" tap-repo
 
@@ -87,16 +181,21 @@ jobs:
             "${TARBALL_URL}" \
             "${SHA256}" \
             "tap-repo/Formula/skills-hub.rb"
+          bash ./scripts/render-homebrew-cask.sh \
+            "${VERSION}" \
+            "${ARM64_SHA256}" \
+            "${X64_SHA256}" \
+            "tap-repo/Casks/skills-hub.rb"
 
           cd tap-repo
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          if [ -z "$(git status --porcelain -- Formula/skills-hub.rb)" ]; then
-            echo "Formula already up to date."
+          if [ -z "$(git status --porcelain -- Formula/skills-hub.rb Casks/skills-hub.rb)" ]; then
+            echo "Formula and cask are already up to date."
             exit 0
           fi
 
-          git add Formula/skills-hub.rb
+          git add Formula/skills-hub.rb Casks/skills-hub.rb
           git commit -m "skills-hub ${VERSION}"
           git push origin HEAD

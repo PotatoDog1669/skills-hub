@@ -41,7 +41,7 @@ Skills Hub 支持同步到多种主流 AI 编码助手，包括 Antigravity, Cla
 - Rust 工具链（`rustup`，用于桌面版 Tauri 源码构建）
 - 对应系统的 Tauri 依赖： [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/)
 
-### 方案 A：Homebrew（macOS/Linux）
+### 方案 A：Homebrew CLI（macOS/Linux）
 
 ```bash
 brew tap PotatoDog1669/skillshub
@@ -56,7 +56,21 @@ brew update
 brew upgrade skills-hub
 ```
 
-### 方案 B：通过 npm 安装 CLI
+### 方案 B：Homebrew 安装桌面版（macOS）
+
+```bash
+brew tap PotatoDog1669/skillshub
+brew install --cask skills-hub
+```
+
+升级：
+
+```bash
+brew update
+brew upgrade --cask skills-hub
+```
+
+### 方案 C：通过 npm 安装 CLI
 
 全局安装：
 
@@ -77,7 +91,7 @@ npx @potatodog1669/skills-hub --help
 npm i -g @potatodog1669/skills-hub@latest
 ```
 
-### 方案 C：从源码运行桌面版
+### 方案 D：从源码运行桌面版
 
 ```bash
 git clone https://github.com/PotatoDog1669/skills-hub.git
@@ -99,7 +113,9 @@ npm run tauri:build
 
 - 最新版本发布页： [GitHub Releases](https://github.com/PotatoDog1669/skills-hub/releases)
 - 当前 release 默认包含变更说明和源码压缩包（`zipball` / `tarball`）。
-- 如果某个 release 附带了桌面安装包资产，终端用户优先下载这些资产。
+- 桌面版 release 资产包含可用于 Homebrew cask 的 DMG：
+  - `skills-hub_X.Y.Z_macos_aarch64.dmg`
+  - `skills-hub_X.Y.Z_macos_x64.dmg`
 
 ## CLI 命令总览
 
