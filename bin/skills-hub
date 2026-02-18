@@ -42,6 +42,7 @@ const flagsWithValues = new Set([
 ]);
 let providerCorePromise = null;
 let kitServicePromise = null;
+let syncServicePromise = null;
 
 let command = null;
 let commandIndex = -1;
@@ -99,7 +100,7 @@ function printHelp() {
 Commands:
   import <url> [--branch <branch>]   Import a skill from a git repository
   list                               List skills in the hub directory
-  sync --all | --target <name>       Sync hub skills to agent targets
+  sync --all | --target <name> [--dry-run]       Sync hub skills to agent targets
   provider <subcommand>              Manage provider profiles and switching
   kit <subcommand>                   Manage AGENTS templates, loadouts, and kits
 
@@ -130,7 +131,7 @@ Kit subcommands:
   kit add --name <name> --policy-id <id> --loadout-id <id> [--description <text>]
   kit update --id <id> [--name <name>] [--policy-id <id>] [--loadout-id <id>] [--description <text>]
   kit delete --id <id>
-  kit apply --id <id> --project <path> --agent <name> [--mode copy|link] [--overwrite-agents-md]
+  kit apply --id <id> --project <path> --agent <name> [--mode copy|link] [--overwrite-agents-md] [--dry-run]
 
   -v, --version       Show version number
   -h, --help          Show this help message
@@ -282,6 +283,13 @@ function loadKitService() {
     return kitServicePromise;
 }
 
+function loadSyncService() {
+    if (!syncServicePromise) {
+        syncServicePromise = import('../lib/services/sync-service.mjs');
+    }
+    return syncServicePromise;
+}
+
 function parseJsonArg(jsonText) {
     try {
         const parsed = JSON.parse(jsonText);
@@ -332,6 +340,23 @@ function readProviderProfileArgs(commandArgs, defaultKind = 'api') {
 
 function hasFlag(argv, flag) {
     return argv.includes(flag);
+}
+
+function printDryRunPreview(preview) {
+    console.log(JSON.stringify(preview));
+    const summary = preview && preview.summary && typeof preview.summary === 'object'
+        ? preview.summary
+        : { total: 0, add: 0, update: 0, delete: 0, link: 0 };
+    console.log(
+        `Dry run summary: total=${summary.total}, add=${summary.add}, ` +
+        `update=${summary.update}, delete=${summary.delete}, link=${summary.link}`
+    );
+
+    if (Array.isArray(preview?.warnings) && preview.warnings.length > 0) {
+        for (const warning of preview.warnings) {
+            console.log(`Warning: ${warning}`);
+        }
+    }
 }
 
 function normalizeKitMode(modeRaw) {
@@ -644,9 +669,22 @@ async function handleKit(commandArgs) {
             const agentName = readArgValue(rest, '--agent');
             const mode = normalizeKitMode(readArgValue(rest, '--mode'));
             const overwriteAgentsMd = hasFlag(rest, '--overwrite-agents-md');
+            const dryRun = hasFlag(rest, '--dry-run');
 
             if (!kitId || !projectPath || !agentName) {
                 throw new Error('kit apply requires --id --project --agent');
+            }
+
+            if (dryRun) {
+                const preview = await service.previewKitApply({
+                    kitId,
+                    projectPath,
+                    agentName,
+                    mode,
+                    overwriteAgentsMd,
+                });
+                printDryRunPreview(preview);
+                return;
             }
 
             const result = await service.applyKit({
@@ -863,6 +901,7 @@ async function handleList() {
 async function handleSync(commandArgs) {
     const targetName = readArgValue(commandArgs, '--target', '-t');
     const allTargets = commandArgs.includes('--all');
+    const dryRun = hasFlag(commandArgs, '--dry-run');
 
     if (!targetName && !allTargets) {
         console.error('Error: specify --target <name> or --all');
@@ -890,28 +929,62 @@ async function handleSync(commandArgs) {
         return;
     }
 
+    const syncService = await loadSyncService();
     const skills = await fsPromises.readdir(hubPath);
-    console.log(`Found ${skills.length} skills in Hub. Syncing to ${targetAgents.length} agents...`);
+    const preview = {
+        action: 'sync',
+        dryRun: true,
+        mode: 'copy',
+        targetCount: targetAgents.length,
+        skillCount: skills.length,
+        changes: [],
+        summary: { total: 0, add: 0, update: 0, delete: 0, link: 0 },
+    };
+
+    if (!dryRun) {
+        console.log(`Found ${skills.length} skills in Hub. Syncing to ${targetAgents.length} agents...`);
+    }
 
     for (const agent of targetAgents) {
         const destRoot = expandHome(agent.globalPath);
-        console.log(`\nSyncing to Agent: ${agent.name} (${destRoot})...`);
-        await fse.ensureDir(destRoot);
+        if (!dryRun) {
+            console.log(`\nSyncing to Agent: ${agent.name} (${destRoot})...`);
+        }
+        if (!dryRun) {
+            await fse.ensureDir(destRoot);
+        }
 
         for (const skill of skills) {
             const skillSource = path.join(hubPath, skill);
             const stat = await fse.stat(skillSource);
             if (!stat.isDirectory()) continue;
 
-            const skillDest = path.join(destRoot, skill);
-
             try {
-                await fse.copy(skillSource, skillDest, { overwrite: true });
-                console.log(`  [OK] ${skill} -> ${skillDest}`);
+                if (dryRun) {
+                    const planned = await syncService.previewSkillSync({
+                        sourcePath: skillSource,
+                        destParentPath: destRoot,
+                        mode: 'copy',
+                    });
+                    preview.changes.push(...planned.changes);
+                } else {
+                    const synced = await syncService.syncSkill({
+                        sourcePath: skillSource,
+                        destParentPath: destRoot,
+                        mode: 'copy',
+                    });
+                    console.log(`  [OK] ${skill} -> ${synced.destination}`);
+                }
             } catch (error) {
                 console.error(`  [ERR] Failed to sync ${skill}:`, error);
             }
         }
+    }
+
+    if (dryRun) {
+        preview.summary = syncService.summarizeSyncChanges(preview.changes);
+        printDryRunPreview(preview);
+        return;
     }
 
     console.log('\nSync complete.');
@@ -955,41 +1028,48 @@ async function handleImport(commandArgs) {
     console.log(`Source last updated: ${downloadResult.lastUpdatedAt}`);
 }
 
-const CONFIG_PATH = path.join(os.homedir(), '.skills-hub', 'config.json');
+function getConfigPath() {
+    return path.join(os.homedir(), '.skills-hub', 'config.json');
+}
 
-const DEFAULT_AGENTS = [
-    { name: 'Antigravity', globalPath: path.join(os.homedir(), '.gemini/antigravity/skills'), projectPath: '.agent/skills', enabled: true, isCustom: false },
-    { name: 'Claude Code', globalPath: path.join(os.homedir(), '.claude/skills'), projectPath: '.claude/skills', enabled: true, isCustom: false },
-    { name: 'Cursor', globalPath: path.join(os.homedir(), '.cursor/skills'), projectPath: '.cursor/skills', enabled: true, isCustom: false },
-    { name: 'OpenCode', globalPath: path.join(os.homedir(), '.config/opencode/skill'), projectPath: '.opencode/skill', enabled: false, isCustom: false },
-    { name: 'Codex', globalPath: path.join(os.homedir(), '.codex/skills'), projectPath: '.codex/skills', enabled: false, isCustom: false },
-    { name: 'Amp', globalPath: path.join(os.homedir(), '.config/agents/skills'), projectPath: '.agents/skills', enabled: false, isCustom: false },
-    { name: 'Kilo Code', globalPath: path.join(os.homedir(), '.kilocode/skills'), projectPath: '.kilocode/skills', enabled: false, isCustom: false },
-    { name: 'Roo Code', globalPath: path.join(os.homedir(), '.roo/skills'), projectPath: '.roo/skills', enabled: false, isCustom: false },
-    { name: 'Goose', globalPath: path.join(os.homedir(), '.config/goose/skills'), projectPath: '.goose/skills', enabled: false, isCustom: false },
-    { name: 'Gemini CLI', globalPath: path.join(os.homedir(), '.gemini/skills'), projectPath: '.gemini/skills', enabled: false, isCustom: false },
-    { name: 'GitHub Copilot', globalPath: path.join(os.homedir(), '.copilot/skills'), projectPath: '.github/skills', enabled: false, isCustom: false },
-    { name: 'Clawdbot', globalPath: path.join(os.homedir(), '.clawdbot/skills'), projectPath: 'skills', enabled: false, isCustom: false },
-    { name: 'Droid', globalPath: path.join(os.homedir(), '.factory/skills'), projectPath: '.factory/skills', enabled: false, isCustom: false },
-    { name: 'Windsurf', globalPath: path.join(os.homedir(), '.codeium/windsurf/skills'), projectPath: '.windsurf/skills', enabled: false, isCustom: false },
-    { name: 'Trae', globalPath: path.join(os.homedir(), '.trae/skills'), projectPath: '.trae/skills', enabled: false, isCustom: false },
-    { name: 'Qoder', globalPath: path.join(os.homedir(), '.qoder/skills'), projectPath: '.qoder/skills', enabled: false, isCustom: false },
-];
+function buildDefaultAgents() {
+    return [
+        { name: 'Antigravity', globalPath: path.join(os.homedir(), '.gemini/antigravity/skills'), projectPath: '.agent/skills', enabled: true, isCustom: false },
+        { name: 'Claude Code', globalPath: path.join(os.homedir(), '.claude/skills'), projectPath: '.claude/skills', enabled: true, isCustom: false },
+        { name: 'Cursor', globalPath: path.join(os.homedir(), '.cursor/skills'), projectPath: '.cursor/skills', enabled: true, isCustom: false },
+        { name: 'OpenCode', globalPath: path.join(os.homedir(), '.config/opencode/skill'), projectPath: '.opencode/skill', enabled: false, isCustom: false },
+        { name: 'Codex', globalPath: path.join(os.homedir(), '.codex/skills'), projectPath: '.codex/skills', enabled: false, isCustom: false },
+        { name: 'Amp', globalPath: path.join(os.homedir(), '.config/agents/skills'), projectPath: '.agents/skills', enabled: false, isCustom: false },
+        { name: 'Kilo Code', globalPath: path.join(os.homedir(), '.kilocode/skills'), projectPath: '.kilocode/skills', enabled: false, isCustom: false },
+        { name: 'Roo Code', globalPath: path.join(os.homedir(), '.roo/skills'), projectPath: '.roo/skills', enabled: false, isCustom: false },
+        { name: 'Goose', globalPath: path.join(os.homedir(), '.config/goose/skills'), projectPath: '.goose/skills', enabled: false, isCustom: false },
+        { name: 'Gemini CLI', globalPath: path.join(os.homedir(), '.gemini/skills'), projectPath: '.gemini/skills', enabled: false, isCustom: false },
+        { name: 'GitHub Copilot', globalPath: path.join(os.homedir(), '.copilot/skills'), projectPath: '.github/skills', enabled: false, isCustom: false },
+        { name: 'Clawdbot', globalPath: path.join(os.homedir(), '.clawdbot/skills'), projectPath: 'skills', enabled: false, isCustom: false },
+        { name: 'Droid', globalPath: path.join(os.homedir(), '.factory/skills'), projectPath: '.factory/skills', enabled: false, isCustom: false },
+        { name: 'Windsurf', globalPath: path.join(os.homedir(), '.codeium/windsurf/skills'), projectPath: '.windsurf/skills', enabled: false, isCustom: false },
+        { name: 'Trae', globalPath: path.join(os.homedir(), '.trae/skills'), projectPath: '.trae/skills', enabled: false, isCustom: false },
+        { name: 'Qoder', globalPath: path.join(os.homedir(), '.qoder/skills'), projectPath: '.qoder/skills', enabled: false, isCustom: false },
+    ];
+}
 
-const DEFAULT_CONFIG = {
-    hubPath: path.join(os.homedir(), 'skills-hub'),
-    projects: [],
-    scanRoots: [path.join(os.homedir(), 'workspace')],
-    agents: DEFAULT_AGENTS,
-};
+function buildDefaultConfig() {
+    return {
+        hubPath: path.join(os.homedir(), 'skills-hub'),
+        projects: [],
+        scanRoots: [path.join(os.homedir(), 'workspace')],
+        agents: buildDefaultAgents(),
+    };
+}
 
 async function loadConfig() {
     try {
-        const content = await fsPromises.readFile(CONFIG_PATH, 'utf-8');
-        if (!content.trim()) return DEFAULT_CONFIG;
+        const defaultConfig = buildDefaultConfig();
+        const content = await fsPromises.readFile(getConfigPath(), 'utf-8');
+        if (!content.trim()) return defaultConfig;
         const userConfig = JSON.parse(content);
 
-        const mergedAgents = [...DEFAULT_AGENTS];
+        const mergedAgents = buildDefaultAgents();
         const userAgents = userConfig.agents || [];
 
         mergedAgents.forEach((agent, index) => {
@@ -1007,12 +1087,12 @@ async function loadConfig() {
         const customAgents = userAgents.filter((ua) => ua.isCustom);
 
         return {
-            ...DEFAULT_CONFIG,
+            ...defaultConfig,
             ...userConfig,
             agents: [...mergedAgents, ...customAgents],
         };
     } catch {
-        return DEFAULT_CONFIG;
+        return buildDefaultConfig();
     }
 }
 

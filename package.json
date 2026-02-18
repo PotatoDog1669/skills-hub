@@ -35,6 +35,8 @@
     "lib/services/provider-service.d.ts",
     "lib/services/kit-service.mjs",
     "lib/services/kit-service.d.ts",
+    "lib/services/sync-service.mjs",
+    "lib/services/sync-service.d.ts",
     "README.md",
     "LICENSE"
   ],
