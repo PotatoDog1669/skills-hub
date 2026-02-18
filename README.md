@@ -30,6 +30,7 @@ Skills Hub supports synchronization with a wide range of AI agents, including An
 - Auto scan is **Git-only**: Scan Roots only add directories that are inside a Git work tree.
 - Manual project add is also **Git-only**.
 - Path inputs now support a system folder picker first, with manual path input as fallback.
+- CLI supports incremental scan cache at `~/.skills-hub/cache/project-scan.json` via `skills-hub scan-projects` (`--force` bypasses cache).
 
 ## Download & Installation
 
@@ -104,9 +105,17 @@ Output directory:
 | Command                                   | Description                                                                     |
 | :---------------------------------------- | :------------------------------------------------------------------------------ |
 | `skills-hub list`                         | List all skills in your Central Hub (`~/skills-hub`)                            |
+| `skills-hub diagnose [--json]`            | Diagnose skill requirements and print missing reasons + fix suggestions          |
+| `skills-hub diagnose --project <path> --agent <path>` | Include project/agent skill roots in diagnostics                     |
+| `skills-hub scan-projects [--force]`      | Scan configured `scanRoots` with incremental cache (`--force` for full rescan)  |
+| `skills-hub conflicts`                    | Detect duplicate `plugin_id` and cross-source skill directory name conflicts     |
+| `skills-hub conflicts --json`             | Output machine-readable conflict details (type, paths, and suggested resolution) |
 | `skills-hub import <url>`                 | Import a skill from GitHub (supports branch: `--branch main`)                   |
 | `skills-hub sync --all`                   | Sync Hub skills to all enabled agents (Antigravity, Claude, Cursor, etc.)       |
 | `skills-hub sync --target <name>`         | Sync to a specific agent (e.g., `--target claude` syncs to `~/.claude/skills/`) |
+| `skills-hub snapshot list`                | List rollback snapshots created before `sync` / `kit apply`                      |
+| `skills-hub snapshot rollback --id <id>`  | Roll back to a specific snapshot                                                  |
+| `skills-hub snapshot rollback --last`     | Roll back to the latest snapshot                                                  |
 | `skills-hub provider list`                | List provider profiles (`claude`, `codex`, `gemini`)                            |
 | `skills-hub provider add ...`             | Add a provider with `--app --name --config-json` or `--config-file`             |
 | `skills-hub provider switch ...`          | Switch current provider with backfill + backup + atomic write                   |
@@ -118,6 +127,14 @@ Output directory:
 | `skills-hub kit policy-*`                 | Manage AGENTS.md templates (`policy-list/add/update/delete`)                    |
 | `skills-hub kit loadout-*`                | Manage skill packages (`loadout-list/add/update/delete`)                        |
 | `skills-hub kit add/update/delete/apply`  | Compose Kit and apply it to target project + agent                              |
+| `skills-hub profile list/add/update/delete` | Manage project profile bindings (`project -> kit/provider`)                    |
+| `skills-hub profile apply ...`            | Apply project/default profile to target project (kit + provider switch)         |
+
+Snapshot retention keeps the latest 20 entries by default. Override with:
+
+```bash
+export SKILLS_HUB_SNAPSHOT_RETENTION=30
+```
 
 ### Development
 

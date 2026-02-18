@@ -1,8 +1,3 @@
-import {
-  getProjectScanCachePath as getProjectScanCachePathCore,
-  scanForProjects as scanForProjectsCore,
-} from './scanner-core.mjs'
-
 export interface ScanForProjectsOptions {
   force?: boolean
   cacheFilePath?: string
@@ -23,13 +18,5 @@ export interface ProjectScanCacheFile {
   roots: Record<string, ProjectScanRootCacheEntry>
 }
 
-export function getProjectScanCachePath(): string {
-  return getProjectScanCachePathCore()
-}
-
-export async function scanForProjects(
-  roots: string[],
-  options: ScanForProjectsOptions = {}
-): Promise<string[]> {
-  return scanForProjectsCore(roots, options)
-}
+export function getProjectScanCachePath(): string
+export function scanForProjects(roots: string[], options?: ScanForProjectsOptions): Promise<string[]>

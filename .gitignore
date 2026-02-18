@@ -50,3 +50,6 @@ next-env.d.ts
 .turbo/
 .eslintcache
 .spec/
+
+# LexCoding local workflow artifacts
+.lexcoding/

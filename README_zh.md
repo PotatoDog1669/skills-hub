@@ -32,6 +32,7 @@ Skills Hub 支持同步到多种主流 AI 编码助手，包括 Antigravity, Cla
 - 自动扫描为 **仅 Git**：`Scan Roots` 只会纳入位于 Git 工作树内的目录。
 - 手动添加项目也为 **仅 Git**。
 - 路径输入优先使用系统文件夹选择器，失败时可回退为手动输入路径。
+- CLI 支持增量扫描缓存：`skills-hub scan-projects` 会复用 `~/.skills-hub/cache/project-scan.json`（`--force` 强制全量刷新）。
 
 ## 下载与安装
 
@@ -106,9 +107,17 @@ npm run tauri:build
 | 命令                                      | 描述                                                                   |
 | :---------------------------------------- | :--------------------------------------------------------------------- |
 | `skills-hub list`                         | 列出中心 Hub (`~/skills-hub`) 中的所有技能                             |
+| `skills-hub diagnose [--json]`            | 诊断技能依赖，输出缺失原因与修复建议（支持 JSON）                      |
+| `skills-hub diagnose --project <path> --agent <path>` | 额外诊断项目/Agent 技能目录                                   |
+| `skills-hub scan-projects [--force]`      | 扫描配置的 `scanRoots` 并复用增量缓存（`--force` 跳过缓存）             |
+| `skills-hub conflicts`                    | 检测重复 `plugin_id` 与跨来源技能目录名冲突                           |
+| `skills-hub conflicts --json`             | 以机器可读 JSON 输出冲突详情（类型、路径、修复建议）                  |
 | `skills-hub import <url>`                 | 从 GitHub 导入技能（支持指定分支: `--branch main`）                    |
 | `skills-hub sync --all`                   | 将 Hub 技能同步到所有已启用的 Agent (Antigravity, Claude, Cursor 等)   |
 | `skills-hub sync --target <name>`         | 同步到特定 Agent（例如：`--target claude` 同步到 `~/.claude/skills/`） |
+| `skills-hub snapshot list`                | 查看 `sync` / `kit apply` 自动生成的回滚快照                            |
+| `skills-hub snapshot rollback --id <id>`  | 回滚到指定快照                                                           |
+| `skills-hub snapshot rollback --last`     | 回滚到最近一次快照                                                       |
 | `skills-hub provider list`                | 查看 Provider 档案列表（`claude`、`codex`、`gemini`）                  |
 | `skills-hub provider add ...`             | 通过 `--app --name --config-json` 或 `--config-file` 新增 Provider     |
 | `skills-hub provider switch ...`          | 执行 Provider 切换（含 backfill + 备份 + 原子写）                      |
@@ -120,6 +129,14 @@ npm run tauri:build
 | `skills-hub kit policy-*`                 | 管理 AGENTS.md 模板（`policy-list/add/update/delete`）                 |
 | `skills-hub kit loadout-*`                | 管理技能包（`loadout-list/add/update/delete`）                         |
 | `skills-hub kit add/update/delete/apply`  | 组合 Kit 并应用到目标项目 + Agent                                      |
+| `skills-hub profile list/add/update/delete` | 管理项目级 Profile 绑定（`项目 -> kit/provider`）                    |
+| `skills-hub profile apply ...`            | 对目标项目应用项目/全局默认 Profile（Kit + Provider 切换）            |
+
+快照默认仅保留最近 20 条，可通过环境变量覆盖：
+
+```bash
+export SKILLS_HUB_SNAPSHOT_RETENTION=30
+```
 
 ### 开发指南
 

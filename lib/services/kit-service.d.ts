@@ -5,6 +5,7 @@ import type {
   KitRecord,
   KitSyncMode,
 } from '../core/kit-types'
+import type { SyncChange } from './sync-service'
 
 export function normalizeKitMode(value: unknown): KitSyncMode
 export function normalizeLoadoutItems(items: unknown): Array<{
@@ -56,6 +57,50 @@ export function updateKit(values: {
   loadoutId?: string
 }): KitRecord
 export function deleteKit(id: string): boolean
+
+export interface KitApplyDryRunPreview {
+  action: 'kit-apply'
+  dryRun: true
+  kitId: string
+  kitName: string
+  projectPath: string
+  agentName: string
+  mode: KitSyncMode
+  changes: SyncChange[]
+  summary: {
+    total: number
+    add: number
+    update: number
+    delete: number
+    link: number
+  }
+  warnings: string[]
+}
+
+export interface KitApplySnapshotPlan {
+  operation: 'kit-apply'
+  mode: KitSyncMode
+  target: string
+  affectedPaths: string[]
+  projectPath: string
+  agentName: string
+}
+
+export function planKitApplySnapshot(values: {
+  kitId: string
+  projectPath: string
+  agentName: string
+  mode?: KitSyncMode
+  overwriteAgentsMd?: boolean
+}): Promise<KitApplySnapshotPlan>
+
+export function previewKitApply(values: {
+  kitId: string
+  projectPath: string
+  agentName: string
+  mode?: KitSyncMode
+  overwriteAgentsMd?: boolean
+}): Promise<KitApplyDryRunPreview>
 
 export function applyKit(values: {
   kitId: string
