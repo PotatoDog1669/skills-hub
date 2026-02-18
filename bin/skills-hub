@@ -22,6 +22,10 @@ const flagsWithValues = new Set([
     '--website',
     '--account-name',
     '--vendor-key',
+    '--provider-id',
+    '--claude-provider-id',
+    '--codex-provider-id',
+    '--gemini-provider-id',
     '--base-url',
     '--api-key',
     '--apps',
@@ -30,6 +34,7 @@ const flagsWithValues = new Set([
     '--gemini-model',
     '--config-json',
     '--config-file',
+    '--kit-id',
     '--policy-id',
     '--loadout-id',
     '--description',
@@ -44,6 +49,10 @@ let providerCorePromise = null;
 let kitServicePromise = null;
 let syncServicePromise = null;
 let snapshotServicePromise = null;
+let profileServicePromise = null;
+let diagnoseServicePromise = null;
+let conflictServicePromise = null;
+let scannerPromise = null;
 
 let command = null;
 let commandIndex = -1;
@@ -101,10 +110,15 @@ function printHelp() {
 Commands:
   import <url> [--branch <branch>]   Import a skill from a git repository
   list                               List skills in the hub directory
+  diagnose [--json] [--project <path>] [--agent <path>]
+                                     Diagnose skill readiness and missing requirements
+  scan-projects [--force]            Scan configured roots for git projects with incremental cache
+  conflicts [--json]                 Detect duplicate plugin ids / cross-source skill name conflicts
   sync --all | --target <name> [--dry-run]       Sync hub skills to agent targets
   snapshot <subcommand>              Manage sync/apply snapshots and rollback
   provider <subcommand>              Manage provider profiles and switching
   kit <subcommand>                   Manage AGENTS templates, loadouts, and kits
+  profile <subcommand>               Manage project profile bindings
 
 Snapshot subcommands:
   snapshot list
@@ -140,6 +154,13 @@ Kit subcommands:
   kit delete --id <id>
   kit apply --id <id> --project <path> --agent <name> [--mode copy|link] [--overwrite-agents-md] [--dry-run]
 
+Profile subcommands:
+  profile list
+  profile add --name <name> --project <path> [--kit-id <id>] [--provider-id <universalId>] [--claude-provider-id <id>] [--codex-provider-id <id>] [--gemini-provider-id <id>] [--default]
+  profile update --id <id> [--name <name>] [--project <path>] [--kit-id <id>] [--provider-id <universalId>] [--claude-provider-id <id>] [--codex-provider-id <id>] [--gemini-provider-id <id>] [--default] [--unset-default]
+  profile delete --id <id>
+  profile apply (--project <path> | --id <id>) [--agent <name>] [--mode copy|link] [--overwrite-agents-md]
+
   -v, --version       Show version number
   -h, --help          Show this help message
 `);
@@ -164,6 +185,32 @@ function readArgValue(argv, flag, shortFlag) {
     }
 
     return null;
+}
+
+function readArgValues(argv, flag, shortFlag) {
+    const values = [];
+
+    for (let index = 0; index < argv.length; index += 1) {
+        const arg = argv[index];
+        if (arg === flag || (shortFlag && arg === shortFlag)) {
+            if (index + 1 < argv.length) {
+                values.push(argv[index + 1]);
+                index += 1;
+            }
+            continue;
+        }
+
+        if (arg.startsWith(`${flag}=`)) {
+            values.push(arg.split('=').slice(1).join('='));
+            continue;
+        }
+
+        if (shortFlag && arg.startsWith(`${shortFlag}=`)) {
+            values.push(arg.split('=').slice(1).join('='));
+        }
+    }
+
+    return values;
 }
 
 function expandHome(inputPath) {
@@ -261,8 +308,17 @@ async function runCommand(commandName, commandArgs) {
         case 'list':
             await handleList();
             return;
+        case 'diagnose':
+            await handleDiagnose(commandArgs);
+            return;
+        case 'scan-projects':
+            await handleScanProjects(commandArgs);
+            return;
         case 'sync':
             await handleSync(commandArgs);
+            return;
+        case 'conflicts':
+            await handleConflicts(commandArgs);
             return;
         case 'snapshot':
             await handleSnapshot(commandArgs);
@@ -272,6 +328,9 @@ async function runCommand(commandName, commandArgs) {
             return;
         case 'kit':
             await handleKit(commandArgs);
+            return;
+        case 'profile':
+            await handleProfile(commandArgs);
             return;
         default:
             console.error(`Unknown command: ${commandName}`);
@@ -305,6 +364,34 @@ function loadSnapshotService() {
         snapshotServicePromise = import('../lib/services/snapshot-service.mjs');
     }
     return snapshotServicePromise;
+}
+
+function loadProfileService() {
+    if (!profileServicePromise) {
+        profileServicePromise = import('../lib/services/profile-service.mjs');
+    }
+    return profileServicePromise;
+}
+
+function loadDiagnoseService() {
+    if (!diagnoseServicePromise) {
+        diagnoseServicePromise = import('../lib/services/diagnose-service.mjs');
+    }
+    return diagnoseServicePromise;
+}
+
+function loadConflictService() {
+    if (!conflictServicePromise) {
+        conflictServicePromise = import('../lib/services/conflict-service.mjs');
+    }
+    return conflictServicePromise;
+}
+
+function loadScanner() {
+    if (!scannerPromise) {
+        scannerPromise = import('../lib/scanner-core.mjs');
+    }
+    return scannerPromise;
 }
 
 function parseJsonArg(jsonText) {
@@ -357,6 +444,10 @@ function readProviderProfileArgs(commandArgs, defaultKind = 'api') {
 
 function hasFlag(argv, flag) {
     return argv.includes(flag);
+}
+
+function hasValueFlag(argv, flag) {
+    return argv.includes(flag) || argv.some((arg) => arg.startsWith(`${flag}=`));
 }
 
 function printDryRunPreview(preview) {
@@ -458,6 +549,53 @@ function readUniversalModels(commandArgs) {
     };
 }
 
+function readProfileProviderByApp(commandArgs) {
+    const claudeFlag = hasValueFlag(commandArgs, '--claude-provider-id');
+    const codexFlag = hasValueFlag(commandArgs, '--codex-provider-id');
+    const geminiFlag = hasValueFlag(commandArgs, '--gemini-provider-id');
+    const claudeProviderId = readArgValue(commandArgs, '--claude-provider-id');
+    const codexProviderId = readArgValue(commandArgs, '--codex-provider-id');
+    const geminiProviderId = readArgValue(commandArgs, '--gemini-provider-id');
+
+    if (claudeFlag && !claudeProviderId) {
+        throw new Error('Missing value for --claude-provider-id');
+    }
+    if (codexFlag && !codexProviderId) {
+        throw new Error('Missing value for --codex-provider-id');
+    }
+    if (geminiFlag && !geminiProviderId) {
+        throw new Error('Missing value for --gemini-provider-id');
+    }
+
+    const providerByApp = {};
+    if (claudeProviderId) {
+        providerByApp.claude = claudeProviderId;
+    }
+    if (codexProviderId) {
+        providerByApp.codex = codexProviderId;
+    }
+    if (geminiProviderId) {
+        providerByApp.gemini = geminiProviderId;
+    }
+
+    return providerByApp;
+}
+
+function formatProfileProviderBinding(profile) {
+    if (profile.providerId) {
+        return `universal:${profile.providerId}`;
+    }
+
+    const byApp = profile.providerByApp && typeof profile.providerByApp === 'object'
+        ? profile.providerByApp
+        : {};
+
+    const labels = ['claude', 'codex', 'gemini']
+        .filter((app) => byApp[app])
+        .map((app) => `${app}:${byApp[app]}`);
+    return labels.length > 0 ? labels.join(',') : 'none';
+}
+
 function printProviderRow(provider) {
     const currentLabel = provider.isCurrent ? ' (current)' : '';
     console.log(`- ${provider.id} | ${provider.appType} | ${provider.name}${currentLabel}`);
@@ -480,12 +618,200 @@ function printKitRow(kit) {
     console.log(`- ${kit.id} | ${kit.name} | policy=${kit.policyId} | loadout=${kit.loadoutId}`);
 }
 
+function printProfileRow(profile) {
+    const defaultLabel = profile.isDefault ? ' | default' : '';
+    const kitLabel = profile.kitId ? profile.kitId : 'none';
+    const providerLabel = formatProfileProviderBinding(profile);
+    console.log(
+        `- ${profile.id} | ${profile.name} | project=${profile.projectPath} | ` +
+        `kit=${kitLabel} | provider=${providerLabel}${defaultLabel}`
+    );
+}
+
 function printSnapshotRow(snapshot) {
     const affectedCount = Array.isArray(snapshot?.affectedPaths) ? snapshot.affectedPaths.length : 0;
     console.log(
         `- ${snapshot.id} | ${snapshot.createdAt} | ${snapshot.operation} | ` +
         `target=${snapshot.target} | mode=${snapshot.mode} | paths=${affectedCount}`
     );
+}
+
+function normalizeConfigPath(inputPath) {
+    const expanded = expandHome(String(inputPath || '').trim());
+    if (!expanded) return '';
+    return path.resolve(expanded);
+}
+
+function normalizeConfigForConflictScan(config) {
+    const projects = Array.isArray(config?.projects) ? config.projects : [];
+    const agents = Array.isArray(config?.agents) ? config.agents : [];
+
+    return {
+        ...config,
+        hubPath: normalizeConfigPath(config?.hubPath),
+        projects: projects.map((projectPath) => normalizeConfigPath(projectPath)).filter(Boolean),
+        agents: agents.map((agent) => ({
+            ...agent,
+            globalPath: normalizeConfigPath(agent?.globalPath),
+            projectPath: String(agent?.projectPath || '').trim(),
+        })),
+    };
+}
+
+function normalizePathArgList(values) {
+    const normalized = [];
+    const seen = new Set();
+
+    for (const value of Array.isArray(values) ? values : []) {
+        const normalizedPath = normalizeConfigPath(value);
+        if (!normalizedPath || seen.has(normalizedPath)) continue;
+        seen.add(normalizedPath);
+        normalized.push(normalizedPath);
+    }
+
+    return normalized;
+}
+
+function buildDiagnoseTargets(config, commandArgs) {
+    const projectRoots = normalizePathArgList(readArgValues(commandArgs, '--project'));
+    const agentRoots = normalizePathArgList(readArgValues(commandArgs, '--agent'));
+    const enabledAgents = (Array.isArray(config?.agents) ? config.agents : []).filter((agent) => agent?.enabled);
+    const projectSkillRelPaths = Array.from(
+        new Set(
+            enabledAgents
+                .map((agent) => String(agent?.projectPath || '').trim())
+                .filter(Boolean)
+        )
+    );
+
+    const targets = [];
+    if (config?.hubPath) {
+        targets.push({
+            kind: 'hub',
+            path: config.hubPath,
+            label: 'hub',
+        });
+    }
+
+    for (const projectRoot of projectRoots) {
+        targets.push({
+            kind: 'project',
+            path: projectRoot,
+            label: `project:${projectRoot}`,
+        });
+
+        for (const relativeSkillPath of projectSkillRelPaths) {
+            targets.push({
+                kind: 'project',
+                path: path.resolve(projectRoot, relativeSkillPath),
+                label: `project:${projectRoot}:${relativeSkillPath}`,
+            });
+        }
+    }
+
+    for (const agentRoot of agentRoots) {
+        targets.push({
+            kind: 'agent',
+            path: agentRoot,
+            label: `agent:${agentRoot}`,
+        });
+    }
+
+    return targets;
+}
+
+function printDiagnoseReason(reason, index) {
+    console.log(`   ${index + 1}. [${reason.code}] ${reason.message}`);
+    if (reason?.suggestion) {
+        console.log(`      Fix: ${reason.suggestion}`);
+    }
+}
+
+function printDiagnoseReport(report) {
+    const totalSkills = report?.summary?.totalSkills || 0;
+    const readySkills = report?.summary?.readySkills || 0;
+    const notReadySkills = report?.summary?.notReadySkills || 0;
+    const totalReasons = report?.summary?.totalReasons || 0;
+
+    console.log(
+        `Diagnosed ${totalSkills} skill(s): ` +
+        `ready=${readySkills}, not-ready=${notReadySkills}, reasons=${totalReasons}`
+    );
+
+    const missingTargets = (report?.targets || []).filter((target) => !target.exists);
+    for (const target of missingTargets) {
+        console.log(`- Skipped missing path [${target.kind}]: ${target.path}`);
+    }
+
+    if (totalSkills === 0) {
+        console.log('No skills found in selected paths.');
+        return;
+    }
+
+    if (notReadySkills === 0) {
+        console.log('All diagnosed skills are ready.');
+        return;
+    }
+
+    for (const skill of report.skills.filter((item) => !item.ready)) {
+        console.log(`\n- ${skill.name} [${skill.source}] ${skill.path}`);
+        for (const [index, reason] of skill.reasons.entries()) {
+            printDiagnoseReason(reason, index);
+        }
+    }
+}
+
+async function handleDiagnose(commandArgs) {
+    const outputJson = hasFlag(commandArgs, '--json');
+    const config = normalizeConfigForConflictScan(await loadConfig());
+    const diagnoseService = await loadDiagnoseService();
+    const report = await diagnoseService.diagnoseSkills({
+        targets: buildDiagnoseTargets(config, commandArgs),
+        config,
+        env: process.env,
+    });
+
+    if (outputJson) {
+        console.log(JSON.stringify(report, null, 2));
+        return;
+    }
+
+    printDiagnoseReport(report);
+}
+
+function printConflictItem(item) {
+    const source = item?.sourceLabel || item?.sourceType || 'unknown';
+    const pluginLabel = item?.pluginId ? ` | plugin_id=${item.pluginId}` : '';
+    console.log(`   - ${source} | ${item.path}${pluginLabel}`);
+}
+
+function printConflict(conflict, index) {
+    const key = conflict?.key || 'unknown';
+    console.log(`${index + 1}. [${conflict.type}] ${key}`);
+    for (const item of conflict.items || []) {
+        printConflictItem(item);
+    }
+    console.log(`   Suggested resolution: ${conflict.resolution}`);
+}
+
+async function handleConflicts(commandArgs) {
+    const outputJson = hasFlag(commandArgs, '--json');
+    const conflictService = await loadConflictService();
+    const config = await loadConfig();
+    const report = await conflictService.collectSkillConflicts(normalizeConfigForConflictScan(config));
+
+    if (outputJson) {
+        console.log(JSON.stringify(report, null, 2));
+        return;
+    }
+
+    if (report.conflictCount === 0) {
+        console.log(`No conflicts found across ${report.itemCount} discovered skills.`);
+        return;
+    }
+
+    console.log(`Found ${report.conflictCount} conflict(s) across ${report.itemCount} discovered skills:`);
+    report.conflicts.forEach((conflict, index) => printConflict(conflict, index));
 }
 
 async function handleSnapshot(commandArgs) {
@@ -533,6 +859,204 @@ async function handleSnapshot(commandArgs) {
         }
         default:
             throw new Error(`Unknown snapshot subcommand: ${subcommand}`);
+    }
+}
+
+async function handleProfile(commandArgs) {
+    const subcommand = commandArgs[0];
+    if (!subcommand) {
+        throw new Error('Missing profile subcommand. Try: profile list|add|update|delete|apply');
+    }
+
+    const profileService = await loadProfileService();
+
+    switch (subcommand) {
+        case 'list': {
+            const result = await profileService.listProfiles();
+            if (result.profiles.length === 0) {
+                console.log('No profiles found.');
+                return;
+            }
+            result.profiles.forEach(printProfileRow);
+            if (!result.defaultProfileId) {
+                console.log('Global default profile: none');
+            }
+            return;
+        }
+        case 'add': {
+            const rest = commandArgs.slice(1);
+            const name = readArgValue(rest, '--name');
+            const projectPath = readArgValue(rest, '--project');
+            const kitIdFlag = hasValueFlag(rest, '--kit-id');
+            const kitId = readArgValue(rest, '--kit-id');
+            const providerIdFlag = hasValueFlag(rest, '--provider-id');
+            const providerId = readArgValue(rest, '--provider-id');
+            const providerByApp = readProfileProviderByApp(rest);
+            const setDefault = hasFlag(rest, '--default');
+
+            if (!name || !projectPath) {
+                throw new Error('profile add requires --name and --project');
+            }
+            if (kitIdFlag && !kitId) {
+                throw new Error('profile add requires a value for --kit-id');
+            }
+            if (providerIdFlag && !providerId) {
+                throw new Error('profile add requires a value for --provider-id');
+            }
+
+            const profile = await profileService.addProfile({
+                name,
+                projectPath,
+                kitId: kitId || undefined,
+                providerId: providerId || undefined,
+                providerByApp,
+                setDefault,
+            });
+            console.log(
+                `Profile created: ${profile.id} (${profile.name})` +
+                `${profile.isDefault ? ' [default]' : ''}`
+            );
+            return;
+        }
+        case 'update': {
+            const rest = commandArgs.slice(1);
+            const id = readArgValue(rest, '--id');
+            if (!id) {
+                throw new Error('profile update requires --id');
+            }
+
+            const setDefault = hasFlag(rest, '--default');
+            const unsetDefault = hasFlag(rest, '--unset-default');
+            if (setDefault && unsetDefault) {
+                throw new Error('profile update cannot use --default with --unset-default');
+            }
+
+            const hasName = hasValueFlag(rest, '--name');
+            const hasProject = hasValueFlag(rest, '--project');
+            const hasKitId = hasValueFlag(rest, '--kit-id');
+            const hasProviderId = hasValueFlag(rest, '--provider-id');
+            const hasClaudeProviderId = hasValueFlag(rest, '--claude-provider-id');
+            const hasCodexProviderId = hasValueFlag(rest, '--codex-provider-id');
+            const hasGeminiProviderId = hasValueFlag(rest, '--gemini-provider-id');
+            const hasProviderByApp = hasClaudeProviderId || hasCodexProviderId || hasGeminiProviderId;
+
+            if (!hasName && !hasProject && !hasKitId && !hasProviderId && !hasProviderByApp && !setDefault && !unsetDefault) {
+                throw new Error('profile update requires at least one field to update');
+            }
+
+            const payload = { id };
+
+            if (hasName) {
+                const name = readArgValue(rest, '--name');
+                if (!name) {
+                    throw new Error('profile update requires a value for --name');
+                }
+                payload.name = name;
+            }
+
+            if (hasProject) {
+                const projectPath = readArgValue(rest, '--project');
+                if (!projectPath) {
+                    throw new Error('profile update requires a value for --project');
+                }
+                payload.projectPath = projectPath;
+            }
+
+            if (hasKitId) {
+                const kitId = readArgValue(rest, '--kit-id');
+                if (!kitId) {
+                    throw new Error('profile update requires a value for --kit-id');
+                }
+                payload.kitId = kitId;
+            }
+
+            if (hasProviderId) {
+                const providerId = readArgValue(rest, '--provider-id');
+                if (!providerId) {
+                    throw new Error('profile update requires a value for --provider-id');
+                }
+                payload.providerId = providerId;
+            }
+
+            if (hasProviderByApp) {
+                payload.providerByApp = readProfileProviderByApp(rest);
+            }
+
+            if (setDefault) {
+                payload.setDefault = true;
+            }
+
+            if (unsetDefault) {
+                payload.unsetDefault = true;
+            }
+
+            const profile = await profileService.updateProfile(payload);
+            console.log(
+                `Profile updated: ${profile.id} (${profile.name})` +
+                `${profile.isDefault ? ' [default]' : ''}`
+            );
+            return;
+        }
+        case 'delete': {
+            const rest = commandArgs.slice(1);
+            const id = readArgValue(rest, '--id');
+            if (!id) {
+                throw new Error('profile delete requires --id');
+            }
+            const deleted = await profileService.deleteProfile(id);
+            console.log(deleted ? `Deleted profile: ${id}` : `Profile not found: ${id}`);
+            return;
+        }
+        case 'apply': {
+            const rest = commandArgs.slice(1);
+            const id = readArgValue(rest, '--id');
+            const projectPath = readArgValue(rest, '--project');
+            const agentName = readArgValue(rest, '--agent');
+            const mode = readArgValue(rest, '--mode');
+            const overwriteAgentsMd = hasFlag(rest, '--overwrite-agents-md');
+
+            if ((id && projectPath) || (!id && !projectPath)) {
+                throw new Error('profile apply requires exactly one of --project <path> or --id <id>');
+            }
+
+            const result = await profileService.applyProfile({
+                id: id || undefined,
+                projectPath: projectPath || undefined,
+                agentName: agentName || undefined,
+                mode: mode || undefined,
+                overwriteAgentsMd,
+            });
+
+            const sourceLabel = result.usedDefaultFallback ? 'default-fallback' : result.matchedBy;
+            console.log(
+                `Profile applied: ${result.profile.id} (${result.profile.name}) | ` +
+                `target=${result.targetProjectPath} | source=${sourceLabel}`
+            );
+
+            if (result.kit.status === 'applied') {
+                console.log(
+                    `Kit applied: ${result.kit.kitId} -> ${result.targetProjectPath} ` +
+                    `(${result.kit.agentName}), skills=${result.kit.syncedSkills}, policy=${result.kit.policyPath}`
+                );
+            } else {
+                console.log(`Kit skipped: ${result.kit.reason}`);
+            }
+
+            if (result.provider.status === 'applied') {
+                const switchedLabel = result.provider.switched
+                    .map((item) => `${item.appType}:${item.providerId}`)
+                    .join(', ');
+                console.log(`Provider switched: ${switchedLabel}`);
+                if (result.provider.skippedApps.length > 0) {
+                    console.log(`Provider skipped apps: ${result.provider.skippedApps.join(', ')}`);
+                }
+            } else {
+                console.log(`Provider skipped: ${result.provider.reason || 'not configured'}`);
+            }
+            return;
+        }
+        default:
+            throw new Error(`Unknown profile subcommand: ${subcommand}`);
     }
 }
 
@@ -986,6 +1510,41 @@ async function handleList() {
         if (stat.isDirectory()) {
             console.log(`  - ${item}`);
         }
+    }
+}
+
+async function handleScanProjects(commandArgs) {
+    const force = hasFlag(commandArgs, '--force');
+    const config = await loadConfig();
+    const scanner = await loadScanner();
+
+    const configuredRoots = Array.isArray(config.scanRoots)
+        ? config.scanRoots
+        : [];
+    const roots = configuredRoots
+        .map((rootPath) => expandHome(rootPath))
+        .map((rootPath) => path.resolve(rootPath))
+        .filter(Boolean);
+    const uniqueRoots = Array.from(new Set(roots));
+
+    if (uniqueRoots.length === 0) {
+        console.log('No scan roots configured. Configure scanRoots in ~/.skills-hub/config.json first.');
+        return;
+    }
+
+    const startedAt = Date.now();
+    const projects = await scanner.scanForProjects(uniqueRoots, { force });
+    const finishedAt = Date.now();
+
+    console.log(`Started at: ${new Date(startedAt).toISOString()}`);
+    console.log(`Finished at: ${new Date(finishedAt).toISOString()}`);
+    console.log(`Scanned roots: ${uniqueRoots.length}`);
+    console.log(`Projects found: ${projects.length}`);
+    console.log(`Duration: ${finishedAt - startedAt}ms`);
+    console.log(`Cache file: ${scanner.getProjectScanCachePath()}${force ? ' (force refresh)' : ''}`);
+
+    for (const projectPath of projects) {
+        console.log(`- ${projectPath}`);
     }
 }
 

@@ -105,6 +105,11 @@ Output directory:
 | Command                                   | Description                                                                     |
 | :---------------------------------------- | :------------------------------------------------------------------------------ |
 | `skills-hub list`                         | List all skills in your Central Hub (`~/skills-hub`)                            |
+| `skills-hub diagnose [--json]`            | Diagnose skill requirements and print missing reasons + fix suggestions          |
+| `skills-hub diagnose --project <path> --agent <path>` | Include project/agent skill roots in diagnostics                     |
+| `skills-hub scan-projects [--force]`      | Scan configured `scanRoots` with incremental cache (`--force` for full rescan)  |
+| `skills-hub conflicts`                    | Detect duplicate `plugin_id` and cross-source skill directory name conflicts     |
+| `skills-hub conflicts --json`             | Output machine-readable conflict details (type, paths, and suggested resolution) |
 | `skills-hub import <url>`                 | Import a skill from GitHub (supports branch: `--branch main`)                   |
 | `skills-hub sync --all`                   | Sync Hub skills to all enabled agents (Antigravity, Claude, Cursor, etc.)       |
 | `skills-hub sync --target <name>`         | Sync to a specific agent (e.g., `--target claude` syncs to `~/.claude/skills/`) |

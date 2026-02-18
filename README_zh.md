@@ -107,6 +107,11 @@ npm run tauri:build
 | 命令                                      | 描述                                                                   |
 | :---------------------------------------- | :--------------------------------------------------------------------- |
 | `skills-hub list`                         | 列出中心 Hub (`~/skills-hub`) 中的所有技能                             |
+| `skills-hub diagnose [--json]`            | 诊断技能依赖，输出缺失原因与修复建议（支持 JSON）                      |
+| `skills-hub diagnose --project <path> --agent <path>` | 额外诊断项目/Agent 技能目录                                   |
+| `skills-hub scan-projects [--force]`      | 扫描配置的 `scanRoots` 并复用增量缓存（`--force` 跳过缓存）             |
+| `skills-hub conflicts`                    | 检测重复 `plugin_id` 与跨来源技能目录名冲突                           |
+| `skills-hub conflicts --json`             | 以机器可读 JSON 输出冲突详情（类型、路径、修复建议）                  |
 | `skills-hub import <url>`                 | 从 GitHub 导入技能（支持指定分支: `--branch main`）                    |
 | `skills-hub sync --all`                   | 将 Hub 技能同步到所有已启用的 Agent (Antigravity, Claude, Cursor 等)   |
 | `skills-hub sync --target <name>`         | 同步到特定 Agent（例如：`--target claude` 同步到 `~/.claude/skills/`） |
