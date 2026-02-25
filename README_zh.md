@@ -121,8 +121,9 @@ npm run tauri:build
 
 | 命令                                      | 描述                                                                   |
 | :---------------------------------------- | :--------------------------------------------------------------------- |
-| `skills-hub list`                         | 列出中心 Hub (`~/skills-hub`) 中的所有技能                             |
-| `skills-hub import <url>`                 | 从 GitHub 导入技能（支持指定分支: `--branch main`）                    |
+| `skills-hub list` / `skills-hub ls`       | 列出已安装技能（默认项目级；支持 `--global`、`--hub`）                 |
+| `skills-hub remove` / `skills-hub rm`     | 移除已安装技能（支持 `--all`、`--global`、`--hub`、`--agent`）         |
+| `skills-hub import <url>`                 | 导入到 Hub（支持 `--branch`，安装模式参数 `-a/-g/--copy`，以及 `--list`） |
 | `skills-hub sync --all`                   | 将 Hub 技能同步到所有已启用的 Agent (Antigravity, Claude, Cursor 等)   |
 | `skills-hub sync --target <name>`         | 同步到特定 Agent（例如：`--target claude` 同步到 `~/.claude/skills/`） |
 | `skills-hub provider list`                | 查看 Provider 档案列表（`claude`、`codex`、`gemini`）                  |
@@ -136,6 +137,34 @@ npm run tauri:build
 | `skills-hub kit policy-*`                 | 管理 AGENTS.md 模板（`policy-list/add/update/delete`）                 |
 | `skills-hub kit loadout-*`                | 管理技能包（`loadout-list/add/update/delete`）                         |
 | `skills-hub kit add/update/delete/apply`  | 组合 Kit 并应用到目标项目 + Agent                                      |
+
+### import/list/remove 快速示例
+
+```bash
+# 仅导入到 Hub（兼容旧行为）
+skills-hub import https://github.com/owner/repo
+
+# 只查看远程可安装技能，不执行导入
+skills-hub import https://github.com/owner/repo --list
+
+# 导入并安装到当前项目的 Codex（默认软链接）
+skills-hub import https://github.com/owner/repo -a codex
+
+# 安装到全局并使用复制模式
+skills-hub import https://github.com/owner/repo -g -a codex --copy
+
+# 冲突时不提示，直接覆盖
+skills-hub import https://github.com/owner/repo -y
+
+# 查看全局安装视角或 Hub 视角
+skills-hub ls --global
+skills-hub list --hub
+
+# 移除安装技能或批量移除
+skills-hub rm my-skill -a codex
+skills-hub remove --all -g -a codex
+skills-hub remove my-skill --hub
+```
 
 ### 开发指南
 

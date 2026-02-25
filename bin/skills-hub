@@ -9,7 +9,11 @@ const simpleGit = require('simple-git');
 const matter = require('gray-matter');
 
 const args = process.argv.slice(2);
-const commands = new Set(['import', 'list', 'sync', 'provider', 'kit']);
+const commandAliases = new Map([
+    ['ls', 'list'],
+    ['rm', 'remove'],
+]);
+const commands = new Set(['import', 'list', 'ls', 'remove', 'rm', 'sync', 'provider', 'kit']);
 const flagsWithValues = new Set([
     '-b',
     '--branch',
@@ -36,6 +40,7 @@ const flagsWithValues = new Set([
     '--skills',
     '--project',
     '--agent',
+    '-a',
     '--mode',
     '--content',
     '--content-file',
@@ -43,53 +48,53 @@ const flagsWithValues = new Set([
 let providerCorePromise = null;
 let kitServicePromise = null;
 
-let command = null;
-let commandIndex = -1;
+async function main() {
+    let command = null;
+    let commandIndex = -1;
 
-for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg.startsWith('-')) {
-        // Check if it's a flag=value style
-        if (arg.includes('=')) continue;
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        if (arg.startsWith('-')) {
+            // Check if it's a flag=value style
+            if (arg.includes('=')) continue;
 
-        // Check if it's a flag that takes a value next
-        if (flagsWithValues.has(arg)) {
-            i++; // Skip the next argument (the value)
+            // Check if it's a flag that takes a value next
+            if (flagsWithValues.has(arg)) {
+                i++; // Skip the next argument (the value)
+            }
+        } else {
+            // Found the first non-flag argument, closest thing to a command
+            command = arg;
+            commandIndex = i;
+            break;
         }
-    } else {
-        // Found the first non-flag argument, closest thing to a command
-        command = arg;
-        commandIndex = i;
-        break;
     }
-}
 
-if (args.includes('--help') || args.includes('-h')) {
-    printHelp();
-    process.exit(0);
-}
+    if (args.includes('--help') || args.includes('-h')) {
+        printHelp();
+        process.exit(0);
+    }
 
-if (args.includes('--version') || args.includes('-v') || args.includes('-V')) {
-    const pkg = require(path.join(__dirname, '..', 'package.json'));
-    console.log(pkg.version);
-    process.exit(0);
-}
+    if (args.includes('--version') || args.includes('-v') || args.includes('-V')) {
+        const pkg = require(path.join(__dirname, '..', 'package.json'));
+        console.log(pkg.version);
+        process.exit(0);
+    }
 
-if (command && !commands.has(command)) {
-    console.error(`Unknown command: ${command}`);
-    printHelp();
-    process.exit(1);
-}
-
-if (command) {
-    const commandArgs = args.slice(commandIndex + 1);
-    runCommand(command, commandArgs).catch((error) => {
-        console.error(`Command failed: ${error.message || error}`);
+    if (command && !commands.has(command)) {
+        console.error(`Unknown command: ${command}`);
+        printHelp();
         process.exit(1);
-    });
-} else {
-    printHelp();
-    process.exit(1);
+    }
+
+    if (!command) {
+        printHelp();
+        process.exit(1);
+    }
+
+    const normalizedCommand = commandAliases.get(command) || command;
+    const commandArgs = args.slice(commandIndex + 1);
+    await runCommand(normalizedCommand, commandArgs);
 }
 
 function printHelp() {
@@ -97,11 +102,31 @@ function printHelp() {
   skills-hub <command> [options]
 
 Commands:
-  import <url> [--branch <branch>]   Import a skill from a git repository
-  list                               List skills in the hub directory
+  import <url> [options]             Import a skill from a git repository
+  list [options]                     List installed skills (alias: ls)
+  remove [skills...] [options]       Remove installed skills (alias: rm)
   sync --all | --target <name>       Sync hub skills to agent targets
   provider <subcommand>              Manage provider profiles and switching
   kit <subcommand>                   Manage AGENTS templates, loadouts, and kits
+
+Import options:
+  -b, --branch <branch>              Use branch when importing from Git
+  -l, --list                         List installable skills in remote source only
+  -g, --global                       Install to global scope (default: current project)
+  -a, --agent <name>                 Install to target agent(s), repeatable or comma-separated
+  --copy                             Copy files instead of symbolic links (default: symlink)
+  -y, --yes                          Overwrite conflicting destinations without prompt
+
+List options:
+  -g, --global                       Show global installation scope
+  -a, --agent <name>                 Filter by target agent(s)
+  --hub                              Show skills in hub storage instead of installation view
+
+Remove options:
+  -g, --global                       Remove from global installation scope
+  -a, --agent <name>                 Remove only from target agent(s)
+  --all                              Remove all installed skills in selected scope
+  --hub                              Remove from hub storage only
 
 Provider subcommands:
   provider list [--app <app>]                                List providers
@@ -251,7 +276,10 @@ async function runCommand(commandName, commandArgs) {
             await handleImport(commandArgs);
             return;
         case 'list':
-            await handleList();
+            await handleList(commandArgs);
+            return;
+        case 'remove':
+            await handleRemove(commandArgs);
             return;
         case 'sync':
             await handleSync(commandArgs);
@@ -332,6 +360,253 @@ function readProviderProfileArgs(commandArgs, defaultKind = 'api') {
 
 function hasFlag(argv, flag) {
     return argv.includes(flag);
+}
+
+function parseCsvValues(rawValue) {
+    if (!rawValue) return [];
+    return rawValue
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+}
+
+function appendUniqueValues(target, values) {
+    for (const value of values) {
+        if (!target.includes(value)) {
+            target.push(value);
+        }
+    }
+}
+
+function parseAgentOptionValues(commandArgs, optionName = 'option') {
+    const agents = [];
+
+    for (let i = 0; i < commandArgs.length; i++) {
+        const arg = commandArgs[i];
+        if (arg === '--agent' || arg === '-a') {
+            const next = commandArgs[i + 1];
+            if (!next || next.startsWith('-')) {
+                throw new Error(`${optionName} requires a value for --agent/-a.`);
+            }
+            appendUniqueValues(agents, parseCsvValues(next));
+            i++;
+            continue;
+        }
+
+        if (arg.startsWith('--agent=')) {
+            const values = parseCsvValues(arg.split('=').slice(1).join('='));
+            if (values.length === 0) {
+                throw new Error(`${optionName} requires a value for --agent.`);
+            }
+            appendUniqueValues(agents, values);
+            continue;
+        }
+
+        if (arg.startsWith('-a=')) {
+            const values = parseCsvValues(arg.split('=').slice(1).join('='));
+            if (values.length === 0) {
+                throw new Error(`${optionName} requires a value for -a.`);
+            }
+            appendUniqueValues(agents, values);
+        }
+    }
+
+    return agents;
+}
+
+function parseScopeArgs(commandArgs, commandName, extraBooleanFlags = new Set()) {
+    const parsed = {
+        useGlobal: false,
+        useHub: false,
+        agents: [],
+        positional: [],
+    };
+
+    for (let i = 0; i < commandArgs.length; i++) {
+        const arg = commandArgs[i];
+
+        if (arg === '--global' || arg === '-g') {
+            parsed.useGlobal = true;
+            continue;
+        }
+
+        if (arg === '--hub') {
+            parsed.useHub = true;
+            continue;
+        }
+
+        if (arg === '--agent' || arg === '-a') {
+            const next = commandArgs[i + 1];
+            if (!next || next.startsWith('-')) {
+                throw new Error(`${commandName}: missing value for --agent/-a.`);
+            }
+            appendUniqueValues(parsed.agents, parseCsvValues(next));
+            i++;
+            continue;
+        }
+
+        if (arg.startsWith('--agent=')) {
+            const values = parseCsvValues(arg.split('=').slice(1).join('='));
+            if (values.length === 0) {
+                throw new Error(`${commandName}: missing value for --agent.`);
+            }
+            appendUniqueValues(parsed.agents, values);
+            continue;
+        }
+
+        if (arg.startsWith('-a=')) {
+            const values = parseCsvValues(arg.split('=').slice(1).join('='));
+            if (values.length === 0) {
+                throw new Error(`${commandName}: missing value for -a.`);
+            }
+            appendUniqueValues(parsed.agents, values);
+            continue;
+        }
+
+        if (extraBooleanFlags.has(arg)) {
+            continue;
+        }
+
+        if (arg.startsWith('-')) {
+            throw new Error(`${commandName}: unknown option ${arg}`);
+        }
+
+        parsed.positional.push(arg);
+    }
+
+    if (parsed.useHub && (parsed.useGlobal || parsed.agents.length > 0)) {
+        throw new Error(`${commandName}: --hub cannot be combined with --global or --agent.`);
+    }
+
+    return parsed;
+}
+
+function resolveAgentScopePath(agent, useGlobal, cwdPath = process.cwd()) {
+    const configuredPath = useGlobal ? agent.globalPath : agent.projectPath;
+    const expandedPath = expandHome(configuredPath);
+
+    if (useGlobal || path.isAbsolute(expandedPath)) {
+        return expandedPath;
+    }
+
+    return path.join(cwdPath, expandedPath);
+}
+
+function matchAgentsBySelectors(agents, selectors) {
+    const normalizedSelectors = selectors.map((value) => value.trim().toLowerCase()).filter(Boolean);
+
+    if (normalizedSelectors.length === 0) {
+        return agents.filter((agent) => agent.enabled);
+    }
+
+    const matched = [];
+    for (const selector of normalizedSelectors) {
+        const candidates = agents.filter((agent) => {
+            const lowerName = String(agent.name || '').toLowerCase();
+            return lowerName === selector || lowerName.includes(selector);
+        });
+
+        for (const candidate of candidates) {
+            if (!matched.some((item) => item.name === candidate.name)) {
+                matched.push(candidate);
+            }
+        }
+    }
+
+    return matched;
+}
+
+async function readSkillNamesUnderRoot(rootPath) {
+    if (!await fse.pathExists(rootPath)) {
+        return [];
+    }
+
+    const entries = await fsPromises.readdir(rootPath);
+    const skills = [];
+    for (const entry of entries) {
+        const fullPath = path.join(rootPath, entry);
+        const stat = await fse.stat(fullPath).catch(() => null);
+        if (!stat) continue;
+        if (stat.isDirectory()) {
+            skills.push(entry);
+        }
+    }
+
+    return skills.sort((a, b) => a.localeCompare(b));
+}
+
+function isInteractiveTerminal() {
+    return Boolean(process.stdin.isTTY && process.stdout.isTTY);
+}
+
+async function promptYesNo(message) {
+    const readline = require('readline');
+    return new Promise((resolve) => {
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+        });
+
+        rl.question(`${message} [y/N]: `, (answer) => {
+            rl.close();
+            const normalized = String(answer || '').trim().toLowerCase();
+            resolve(normalized === 'y' || normalized === 'yes');
+        });
+    });
+}
+
+async function syncSkillToTarget(sourcePath, destPath, syncMode) {
+    await fse.ensureDir(path.dirname(destPath));
+    await fse.remove(destPath);
+
+    if (syncMode === 'link') {
+        await fse.ensureSymlink(sourcePath, destPath);
+        return;
+    }
+
+    await fse.copy(sourcePath, destPath, { overwrite: true });
+}
+
+function parseImportArgs(commandArgs) {
+    const parsed = {
+        url: '',
+        branch: readArgValue(commandArgs, '--branch', '-b') || undefined,
+        listOnly: hasFlag(commandArgs, '--list') || hasFlag(commandArgs, '-l'),
+        useGlobal: hasFlag(commandArgs, '--global') || hasFlag(commandArgs, '-g'),
+        copyMode: hasFlag(commandArgs, '--copy'),
+        autoYes: hasFlag(commandArgs, '--yes') || hasFlag(commandArgs, '-y'),
+        agents: parseAgentOptionValues(commandArgs, 'import'),
+    };
+
+    const positional = [];
+    for (let i = 0; i < commandArgs.length; i++) {
+        const arg = commandArgs[i];
+        if (arg === '--branch' || arg === '-b' || arg === '--agent' || arg === '-a') {
+            i++;
+            continue;
+        }
+        if (arg.startsWith('--branch=')) continue;
+        if (arg.startsWith('--agent=')) continue;
+        if (arg.startsWith('-a=')) continue;
+        if (arg === '--list' || arg === '-l' || arg === '--global' || arg === '-g' || arg === '--copy' || arg === '--yes' || arg === '-y') {
+            continue;
+        }
+        if (arg.startsWith('-')) {
+            throw new Error(`Unknown import option: ${arg}`);
+        }
+        positional.push(arg);
+    }
+
+    if (positional.length === 0) {
+        throw new Error('Error: Missing URL for import.');
+    }
+
+    if (positional.length > 1) {
+        throw new Error(`Unexpected extra import arguments: ${positional.slice(1).join(' ')}`);
+    }
+
+    parsed.url = positional[0];
+    return parsed;
 }
 
 function normalizeKitMode(modeRaw) {
@@ -840,24 +1115,142 @@ async function handleProvider(commandArgs) {
     }
 }
 
-async function handleList() {
-    const config = await loadConfig();
-    const hubPath = expandHome(config.hubPath);
-
+async function handleHubList(hubPath) {
     console.log(`Listing skills in ${hubPath}:`);
     if (!await fse.pathExists(hubPath)) {
         console.log('  (Hub directory does not exist yet)');
         return;
     }
 
-    const items = await fsPromises.readdir(hubPath);
+    const items = await readSkillNamesUnderRoot(hubPath);
+    if (items.length === 0) {
+        console.log('  (Hub directory is empty)');
+        return;
+    }
+
     for (const item of items) {
-        const fullPath = path.join(hubPath, item);
-        const stat = await fse.stat(fullPath);
-        if (stat.isDirectory()) {
-            console.log(`  - ${item}`);
+        console.log(`  - ${item}`);
+    }
+}
+
+async function handleInstallList({ config, useGlobal, agents }) {
+    const scopeName = useGlobal ? 'global' : 'project';
+    const selectedAgents = matchAgentsBySelectors(config.agents, agents);
+
+    if (selectedAgents.length === 0) {
+        console.error('No matching agents found.');
+        return;
+    }
+
+    console.log(`Listing installed skills (${scopeName} scope):`);
+    for (const agent of selectedAgents) {
+        const targetRoot = resolveAgentScopePath(agent, useGlobal);
+        const skills = await readSkillNamesUnderRoot(targetRoot);
+        const skillLabel = skills.length > 0 ? skills.join(', ') : '(none)';
+        console.log(`  - ${agent.name} (${targetRoot}) -> ${skillLabel}`);
+    }
+}
+
+async function handleList(commandArgs) {
+    const parsed = parseScopeArgs(commandArgs, 'list');
+    const config = await loadConfig();
+    const hubPath = expandHome(config.hubPath);
+
+    if (parsed.positional.length > 0) {
+        throw new Error(`list: unexpected arguments: ${parsed.positional.join(' ')}`);
+    }
+
+    if (parsed.useHub) {
+        await handleHubList(hubPath);
+        return;
+    }
+
+    await handleInstallList({
+        config,
+        useGlobal: parsed.useGlobal,
+        agents: parsed.agents,
+    });
+}
+
+async function removeHubSkills(hubPath, skillNames, removeAll) {
+    if (!await fse.pathExists(hubPath)) {
+        console.log('Hub directory does not exist, nothing to remove.');
+        return;
+    }
+
+    const targetNames = removeAll ? await readSkillNamesUnderRoot(hubPath) : skillNames;
+    if (targetNames.length === 0) {
+        console.log('No hub skills matched for removal.');
+        return;
+    }
+
+    for (const skillName of targetNames) {
+        const targetPath = path.join(hubPath, skillName);
+        if (!await fse.pathExists(targetPath)) {
+            console.log(`  [SKIP] Hub skill not found: ${skillName}`);
+            continue;
+        }
+        await fse.remove(targetPath);
+        console.log(`  [OK] Removed hub skill: ${skillName}`);
+    }
+}
+
+async function removeInstalledSkills({ config, useGlobal, agents, skillNames, removeAll }) {
+    const selectedAgents = matchAgentsBySelectors(config.agents, agents);
+    if (selectedAgents.length === 0) {
+        throw new Error('No matching agents found.');
+    }
+
+    for (const agent of selectedAgents) {
+        const targetRoot = resolveAgentScopePath(agent, useGlobal);
+        if (!await fse.pathExists(targetRoot)) {
+            console.log(`  [SKIP] ${agent.name}: target path missing (${targetRoot})`);
+            continue;
+        }
+
+        const targetNames = removeAll ? await readSkillNamesUnderRoot(targetRoot) : skillNames;
+        if (targetNames.length === 0) {
+            console.log(`  [SKIP] ${agent.name}: no matching skills to remove`);
+            continue;
+        }
+
+        for (const skillName of targetNames) {
+            const targetPath = path.join(targetRoot, skillName);
+            if (!await fse.pathExists(targetPath)) {
+                console.log(`  [SKIP] ${agent.name}: ${skillName} not found`);
+                continue;
+            }
+
+            await fse.remove(targetPath);
+            console.log(`  [OK] ${agent.name}: removed ${skillName}`);
         }
     }
+}
+
+async function handleRemove(commandArgs) {
+    const parsed = parseScopeArgs(commandArgs, 'remove', new Set(['--all']));
+    const removeAll = hasFlag(commandArgs, '--all');
+    const skillNames = parsed.positional;
+
+    if (!removeAll && skillNames.length === 0) {
+        throw new Error('remove requires at least one skill name or --all.');
+    }
+
+    const config = await loadConfig();
+    const hubPath = expandHome(config.hubPath);
+
+    if (parsed.useHub) {
+        await removeHubSkills(hubPath, skillNames, removeAll);
+        return;
+    }
+
+    await removeInstalledSkills({
+        config,
+        useGlobal: parsed.useGlobal,
+        agents: parsed.agents,
+        skillNames,
+        removeAll,
+    });
 }
 
 async function handleSync(commandArgs) {
@@ -917,33 +1310,139 @@ async function handleSync(commandArgs) {
     console.log('\nSync complete.');
 }
 
-async function handleImport(commandArgs) {
-    const branchArg = readArgValue(commandArgs, '--branch', '-b');
-    const url = commandArgs.find((arg) => !arg.startsWith('-'));
-
-    if (!url) {
-        console.error('Error: Missing URL for import.');
-        console.log('Usage: skills-hub import <url> [--branch <branch>]');
-        process.exit(1);
+async function collectRemoteInstallableSkills(basePath, currentPath, out, rootSkillName) {
+    const skillMdPath = path.join(currentPath, 'SKILL.md');
+    if (await fse.pathExists(skillMdPath)) {
+        const relative = path.relative(basePath, currentPath).split(path.sep).join('/') || '.';
+        out.push({
+            name: relative === '.' ? rootSkillName : path.basename(currentPath),
+            relativePath: relative,
+        });
+        return;
     }
 
-    const { repoUrl, repoWebUrl, subdir, skillName, branch } = parseSkillImportUrl(url, branchArg);
+    const entries = await fsPromises.readdir(currentPath, { withFileTypes: true });
+    for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        if (entry.name === '.git' || entry.name === 'node_modules') continue;
+        await collectRemoteInstallableSkills(basePath, path.join(currentPath, entry.name), out, rootSkillName);
+    }
+}
+
+async function listRemoteInstallableSkills(repoUrl, subdir, branch, rootSkillName) {
+    const tempDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'skills-hub-list-'));
+    const git = simpleGit();
+
+    try {
+        const cloneArgs = ['--depth', '1'];
+        if (branch) {
+            cloneArgs.push('--branch', branch);
+        }
+        await git.clone(repoUrl, tempDir, cloneArgs);
+
+        const localGit = simpleGit(tempDir);
+        const resolvedBranch = await localGit.revparse(['--abbrev-ref', 'HEAD']).catch(() => branch || 'unknown');
+
+        const sourceRoot = subdir ? path.join(tempDir, subdir) : tempDir;
+        if (!await fse.pathExists(sourceRoot)) {
+            throw new Error(`Directory '${subdir}' not found in remote repository.`);
+        }
+
+        const installableSkills = [];
+        await collectRemoteInstallableSkills(sourceRoot, sourceRoot, installableSkills, rootSkillName);
+        installableSkills.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+
+        return {
+            resolvedBranch,
+            installableSkills,
+        };
+    } finally {
+        await fse.remove(tempDir);
+    }
+}
+
+async function handleImport(commandArgs) {
+    const parsed = parseImportArgs(commandArgs);
+    const { repoUrl, repoWebUrl, subdir, skillName, branch } = parseSkillImportUrl(parsed.url, parsed.branch);
     const config = await loadConfig();
     const hubPath = expandHome(config.hubPath);
-    const destPath = path.join(hubPath, skillName);
+    const hubSkillPath = path.join(hubPath, skillName);
+    const installMode = parsed.useGlobal || parsed.copyMode || parsed.agents.length > 0;
+    const syncMode = parsed.copyMode ? 'copy' : 'link';
+
+    if (parsed.listOnly) {
+        const result = await listRemoteInstallableSkills(repoUrl, subdir, branch, skillName);
+        console.log(`Installable skills from ${repoWebUrl} (branch: ${result.resolvedBranch}):`);
+        if (result.installableSkills.length === 0) {
+            console.log('  (none found)');
+            return;
+        }
+        for (const item of result.installableSkills) {
+            const pathLabel = item.relativePath === '.' ? '(root)' : item.relativePath;
+            console.log(`  - ${item.name} [${pathLabel}]`);
+        }
+        return;
+    }
+
+    const installTargets = [];
+    if (installMode) {
+        const selectedAgents = matchAgentsBySelectors(config.agents, parsed.agents);
+        if (selectedAgents.length === 0) {
+            throw new Error('No matching agents found to install skills.');
+        }
+
+        for (const agent of selectedAgents) {
+            const targetRoot = resolveAgentScopePath(agent, parsed.useGlobal);
+            installTargets.push({
+                agentName: agent.name,
+                targetRoot,
+                skillPath: path.join(targetRoot, skillName),
+            });
+        }
+    }
+
+    const conflictTargets = [];
+    if (await fse.pathExists(hubSkillPath)) {
+        conflictTargets.push({
+            label: `Hub skill ${skillName}`,
+            path: hubSkillPath,
+        });
+    }
+    for (const target of installTargets) {
+        if (await fse.pathExists(target.skillPath)) {
+            conflictTargets.push({
+                label: `${target.agentName} skill ${skillName}`,
+                path: target.skillPath,
+            });
+        }
+    }
+
+    if (conflictTargets.length > 0 && !parsed.autoYes && !isInteractiveTerminal()) {
+        throw new Error(`Target already exists: ${conflictTargets[0].path}. Use -y/--yes to overwrite in non-interactive mode.`);
+    }
+
+    if (conflictTargets.length > 0 && !parsed.autoYes && isInteractiveTerminal()) {
+        for (const target of conflictTargets) {
+            const confirmed = await promptYesNo(`${target.label} already exists at ${target.path}. Overwrite?`);
+            if (!confirmed) {
+                console.log('Import cancelled.');
+                return;
+            }
+        }
+    }
+
+    await fse.ensureDir(hubPath);
+    if (await fse.pathExists(hubSkillPath)) {
+        await fse.remove(hubSkillPath);
+    }
 
     console.log(`  Repo: ${repoUrl}`);
     console.log(`  Subdir: ${subdir || '(root)'}`);
-    console.log(`  Target: ${destPath}`);
+    console.log(`  Hub target: ${hubSkillPath}`);
 
-    if (await fse.pathExists(destPath)) {
-        console.error(`Error: Skill '${skillName}' already exists at ${destPath}`);
-        process.exit(1);
-    }
-
-    const downloadResult = await downloadRemoteSkill(repoUrl, subdir, destPath, branch);
+    const downloadResult = await downloadRemoteSkill(repoUrl, subdir, hubSkillPath, branch);
     const sourceUrl = buildGitSourceUrl(repoWebUrl, downloadResult.resolvedBranch, subdir);
-    await attachSkillImportMetadata(destPath, {
+    await attachSkillImportMetadata(hubSkillPath, {
         sourceRepo: repoWebUrl,
         sourceUrl,
         sourceSubdir: subdir,
@@ -951,8 +1450,18 @@ async function handleImport(commandArgs) {
         importedAt: new Date().toISOString(),
     });
 
-    console.log(`Successfully imported ${skillName} from ${repoWebUrl}!`);
+    console.log(`Successfully imported ${skillName} to Hub from ${repoWebUrl}.`);
     console.log(`Source last updated: ${downloadResult.lastUpdatedAt}`);
+
+    if (!installMode) {
+        return;
+    }
+
+    console.log(`Installing '${skillName}' to ${installTargets.length} agent target(s) (${syncMode})...`);
+    for (const target of installTargets) {
+        await syncSkillToTarget(hubSkillPath, target.skillPath, syncMode);
+        console.log(`  [OK] ${target.agentName}: ${target.skillPath}`);
+    }
 }
 
 const CONFIG_PATH = path.join(os.homedir(), '.skills-hub', 'config.json');
@@ -1095,3 +1604,8 @@ async function downloadRemoteSkill(repoUrl, subdir, destPath, branch) {
         await fse.remove(tempDir);
     }
 }
+
+main().catch((error) => {
+    console.error(`Command failed: ${error.message || error}`);
+    process.exit(1);
+});

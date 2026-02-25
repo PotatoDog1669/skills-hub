@@ -2,9 +2,9 @@
 
 import { Skill } from '@/lib/skills-types'
 import { AppConfig } from '@/lib/config'
-import { SkillCard, UnifiedSkill, ViewContext } from './SkillCard'
+import { SkillCard, ViewContext } from './SkillCard'
 import { SyncModal } from './SyncModal'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { IntroductionView } from './IntroductionView'
 import { SkillDetailView } from './SkillDetailView'
 import { useSearchParams } from '@/apps/desktop-ui/src/shims/navigation'
@@ -17,6 +17,13 @@ import type { AppType, ProviderRecord, UniversalProviderRecord } from '@/lib/cor
 import type { KitLoadoutRecord, KitPolicyRecord, KitRecord } from '@/lib/core/kit-types'
 import { KitPanel } from './KitPanel'
 import { SkillsMarketView } from './SkillsMarketView'
+import {
+  AgentSkillScope,
+  SKILL_TAG_ALL,
+  collectAvailableSkillTags,
+  filterSkillGroups,
+  groupSkillsByName,
+} from '@/lib/core/skill-filter'
 
 interface DashboardProps {
   skills: Skill[]
@@ -59,36 +66,51 @@ export function Dashboard({
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedTag, setSelectedTag] = useState(SKILL_TAG_ALL)
+  const [agentScope, setAgentScope] = useState<AgentSkillScope>('all')
+  const shouldEnableTagFilter = currentView !== 'agent' && currentView !== 'hub'
 
   const allGroups = useMemo(() => {
-    const groups: Record<string, UnifiedSkill> = {}
-    skills.forEach((skill) => {
-      if (!groups[skill.name]) {
-        groups[skill.name] = {
-          name: skill.name,
-          description: skill.description,
-          instances: [],
-        }
-      }
-      if (skill.description && skill.description.length > groups[skill.name].description.length) {
-        groups[skill.name].description = skill.description
-      }
-      groups[skill.name].instances.push(skill)
-    })
-
-    return groups
+    return groupSkillsByName(skills)
   }, [skills])
 
+  const filterContext = useMemo(
+    () => ({
+      currentView,
+      currentId,
+      agentScope,
+    }),
+    [agentScope, currentId, currentView]
+  )
+
+  const availableTags = useMemo(
+    () => (shouldEnableTagFilter ? collectAvailableSkillTags(allGroups, filterContext) : []),
+    [allGroups, filterContext, shouldEnableTagFilter]
+  )
+
   const filteredGroups = useMemo(() => {
-    return Object.values(allGroups).filter((group) => {
-      if (currentView === 'inventory-skills' || currentView === 'all') return true
-      if (currentView === 'hub') return group.instances.some((s) => s.location === 'hub')
-      if (currentView === 'agent') return group.instances.some((s) => s.agentName === currentId)
-      if (currentView === 'project')
-        return group.instances.some((s) => s.path.startsWith(currentId || ''))
-      return false
+    return filterSkillGroups(allGroups, {
+      ...filterContext,
+      selectedTag: shouldEnableTagFilter ? selectedTag : SKILL_TAG_ALL,
+      searchQuery,
     })
-  }, [allGroups, currentId, currentView])
+  }, [allGroups, filterContext, searchQuery, selectedTag, shouldEnableTagFilter])
+
+  useEffect(() => {
+    if (currentView !== 'agent' && agentScope !== 'all') {
+      setAgentScope('all')
+    }
+  }, [agentScope, currentView])
+
+  useEffect(() => {
+    if (selectedTag === SKILL_TAG_ALL) {
+      return
+    }
+    if (!availableTags.includes(selectedTag)) {
+      setSelectedTag(SKILL_TAG_ALL)
+    }
+  }, [availableTags, selectedTag])
 
   const handleSync = (skill: Skill) => {
     setSelectedSkill(skill)
@@ -194,38 +216,108 @@ export function Dashboard({
     )
   }
 
+  const filterButtonClass = (isActive: boolean) =>
+    `inline-flex items-center rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+      isActive
+        ? 'bg-[#d97757] text-white border-[#d97757]'
+        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+    }`
+
   return (
     <div className="container py-8">
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-4">
-          <div className="flex flex-col">
-            <h1 className="text-3xl font-bold">{title}</h1>
-            {currentView === 'project' && currentId && (
-              <div className="text-xs text-muted-foreground mt-1 font-mono bg-gray-50 px-2 py-0.5 rounded border border-gray-100 self-start">
-                {currentId}
+      <div className="flex flex-col gap-4 mb-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex flex-col">
+              <h1 className="text-3xl font-bold">{title}</h1>
+              {currentView === 'project' && currentId && (
+                <div className="text-xs text-muted-foreground mt-1 font-mono bg-gray-50 px-2 py-0.5 rounded border border-gray-100 self-start">
+                  {currentId}
+                </div>
+              )}
+            </div>
+            {currentView === 'hub' && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsCreateModalOpen(true)}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-colors shadow-sm"
+                >
+                  <Plus size={14} className="text-gray-500" />
+                  <span>Create Skill</span>
+                </button>
+                <button
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="flex items-center gap-2 px-3 py-1.5 font-medium bg-[#d97757] text-white border border-transparent rounded-md hover:bg-[#c05f3e] transition-colors shadow-sm text-sm"
+                >
+                  <Download size={14} />
+                  <span>Import Skill</span>
+                </button>
               </div>
             )}
           </div>
-          {currentView === 'hub' && (
-            <div className="flex gap-2">
+          <span className="text-muted-foreground">{filteredGroups.length} skills found</span>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search by skill name or description"
+              aria-label="Search skills"
+              className="w-full lg:max-w-2xl rounded-md border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]"
+            />
+
+            {currentView === 'agent' && (
+              <div className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white p-1">
+                <button
+                  type="button"
+                  onClick={() => setAgentScope('all')}
+                  className={filterButtonClass(agentScope === 'all')}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAgentScope('global')}
+                  className={filterButtonClass(agentScope === 'global')}
+                >
+                  Global
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAgentScope('project')}
+                  className={filterButtonClass(agentScope === 'project')}
+                >
+                  Project
+                </button>
+              </div>
+            )}
+          </div>
+
+          {shouldEnableTagFilter && availableTags.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
               <button
-                onClick={() => setIsCreateModalOpen(true)}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium bg-white border border-gray-200 rounded-md hover:bg-gray-50 transition-colors shadow-sm"
+                type="button"
+                onClick={() => setSelectedTag(SKILL_TAG_ALL)}
+                className={filterButtonClass(selectedTag === SKILL_TAG_ALL)}
               >
-                <Plus size={14} className="text-gray-500" />
-                <span>Create Skill</span>
+                {SKILL_TAG_ALL}
               </button>
-              <button
-                onClick={() => setIsImportModalOpen(true)}
-                className="flex items-center gap-2 px-3 py-1.5 font-medium bg-[#d97757] text-white border border-transparent rounded-md hover:bg-[#c05f3e] transition-colors shadow-sm text-sm"
-              >
-                <Download size={14} />
-                <span>Import Skill</span>
-              </button>
+              {availableTags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => setSelectedTag(tag)}
+                  className={filterButtonClass(selectedTag === tag)}
+                >
+                  {tag}
+                </button>
+              ))}
             </div>
           )}
         </div>
-        <span className="text-muted-foreground">{filteredGroups.length} skills found</span>
       </div>
 
       {filteredGroups.length === 0 ? (

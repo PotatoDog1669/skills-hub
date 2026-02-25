@@ -119,8 +119,9 @@ Output directory:
 
 | Command                                   | Description                                                                     |
 | :---------------------------------------- | :------------------------------------------------------------------------------ |
-| `skills-hub list`                         | List all skills in your Central Hub (`~/skills-hub`)                            |
-| `skills-hub import <url>`                 | Import a skill from GitHub (supports branch: `--branch main`)                   |
+| `skills-hub list` / `skills-hub ls`       | List installed skills (project scope by default; supports `--global`, `--hub`)  |
+| `skills-hub remove` / `skills-hub rm`     | Remove installed skills (supports `--all`, `--global`, `--hub`, `--agent`)      |
+| `skills-hub import <url>`                 | Import to Hub (supports `--branch`, install mode: `-a/-g/--copy`, and `--list`) |
 | `skills-hub sync --all`                   | Sync Hub skills to all enabled agents (Antigravity, Claude, Cursor, etc.)       |
 | `skills-hub sync --target <name>`         | Sync to a specific agent (e.g., `--target claude` syncs to `~/.claude/skills/`) |
 | `skills-hub provider list`                | List provider profiles (`claude`, `codex`, `gemini`)                            |
@@ -134,6 +135,34 @@ Output directory:
 | `skills-hub kit policy-*`                 | Manage AGENTS.md templates (`policy-list/add/update/delete`)                    |
 | `skills-hub kit loadout-*`                | Manage skill packages (`loadout-list/add/update/delete`)                        |
 | `skills-hub kit add/update/delete/apply`  | Compose Kit and apply it to target project + agent                              |
+
+### Import/List/Remove Quick Examples
+
+```bash
+# Import to Hub only (backward compatible)
+skills-hub import https://github.com/owner/repo
+
+# List installable skills from remote source only
+skills-hub import https://github.com/owner/repo --list
+
+# Import + install to Codex in current project (default mode: symlink)
+skills-hub import https://github.com/owner/repo -a codex
+
+# Install globally and copy files instead of symlinks
+skills-hub import https://github.com/owner/repo -g -a codex --copy
+
+# Overwrite conflicts without prompt
+skills-hub import https://github.com/owner/repo -y
+
+# View global installation or Hub inventory
+skills-hub ls --global
+skills-hub list --hub
+
+# Remove one installed skill or remove all in selected scope
+skills-hub rm my-skill -a codex
+skills-hub remove --all -g -a codex
+skills-hub remove my-skill --hub
+```
 
 ### Development
 
