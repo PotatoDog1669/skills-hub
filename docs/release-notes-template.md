@@ -21,14 +21,14 @@ brew install --cask skills-hub
 ### CLI (npm, Recommended)
 
 ```bash
-npm i -g @potatodog1669/skills-hub@X.Y.Z
+npm i -g @skillshub-labs/cli@X.Y.Z
 skills-hub --version
 ```
 
 ### CLI (npx, No Global Install)
 
 ```bash
-npx @potatodog1669/skills-hub@X.Y.Z --help
+npx @skillshub-labs/cli@X.Y.Z --help
 ```
 
 ### Source Archives
@@ -66,7 +66,7 @@ npx @potatodog1669/skills-hub@X.Y.Z --help
 ## Verification Checklist
 
 - [ ] npm package published successfully
-- [ ] `npm i -g @potatodog1669/skills-hub@X.Y.Z` works on a clean environment
+- [ ] `npm i -g @skillshub-labs/cli@X.Y.Z` works on a clean environment
 - [ ] `skills-hub --help` and key command smoke tests pass
 - [ ] Release notes match actual shipped behavior
 - [ ] Homebrew cask install works: `brew install --cask skills-hub`

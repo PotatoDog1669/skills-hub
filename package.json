@@ -1,5 +1,5 @@
 {
-  "name": "@potatodog1669/skills-hub",
+  "name": "@skillshub-labs/cli",
   "version": "0.1.17",
   "description": "Unify your AI toolbox. A local hub to visualize, manage, and sync skills across Antigravity, Claude, Cursor, Trae, and other AI agents.",
   "keywords": [

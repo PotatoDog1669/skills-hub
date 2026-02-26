@@ -73,20 +73,20 @@ brew upgrade --cask skills-hub
 Install globally:
 
 ```bash
-npm i -g @potatodog1669/skills-hub
+npm i -g @skillshub-labs/cli
 skills-hub --help
 ```
 
 Run without global install:
 
 ```bash
-npx @potatodog1669/skills-hub --help
+npx @skillshub-labs/cli --help
 ```
 
 Upgrade:
 
 ```bash
-npm i -g @potatodog1669/skills-hub@latest
+npm i -g @skillshub-labs/cli@latest
 ```
 
 ### Option D: Build Desktop App from Source

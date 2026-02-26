@@ -75,20 +75,20 @@ brew upgrade --cask skills-hub
 全局安装：
 
 ```bash
-npm i -g @potatodog1669/skills-hub
+npm i -g @skillshub-labs/cli
 skills-hub --help
 ```
 
 不全局安装直接运行：
 
 ```bash
-npx @potatodog1669/skills-hub --help
+npx @skillshub-labs/cli --help
 ```
 
 升级到最新版本：
 
 ```bash
-npm i -g @potatodog1669/skills-hub@latest
+npm i -g @skillshub-labs/cli@latest
 ```
 
 ### 方案 D：从源码运行桌面版

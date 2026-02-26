@@ -157,7 +157,7 @@ jobs:
           fi
 
           VERSION="${GITHUB_REF_NAME#v}"
-          PACKAGE_NAME="@potatodog1669/skills-hub"
+          PACKAGE_NAME="@skillshub-labs/cli"
           TAP_REPO="${HOMEBREW_TAP_REPO:-PotatoDog1669/homebrew-skillshub}"
           ARM64_DMG="release-assets/skills-hub_${VERSION}_macos_aarch64.dmg"
           X64_DMG="release-assets/skills-hub_${VERSION}_macos_x64.dmg"
