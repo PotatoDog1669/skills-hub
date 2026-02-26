@@ -39,7 +39,21 @@ Skills Hub supports synchronization with a wide range of AI agents, including An
 - Rust toolchain (`rustup`) for Desktop (Tauri) source build
 - Tauri platform prerequisites for your OS: [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/)
 
-### Option A: Homebrew CLI (macOS/Linux)
+### Option A: App via Homebrew (macOS)
+
+```bash
+brew tap PotatoDog1669/skillshub
+brew install --cask skills-hub
+```
+
+Upgrade:
+
+```bash
+brew update
+brew upgrade --cask skills-hub
+```
+
+### Option B: CLI via Homebrew (macOS/Linux)
 
 ```bash
 brew tap PotatoDog1669/skillshub
@@ -52,20 +66,6 @@ Upgrade:
 ```bash
 brew update
 brew upgrade skills-hub
-```
-
-### Option B: Homebrew Desktop App (macOS)
-
-```bash
-brew tap PotatoDog1669/skillshub
-brew install --cask skills-hub
-```
-
-Upgrade:
-
-```bash
-brew update
-brew upgrade --cask skills-hub
 ```
 
 ### Option C: CLI via npm
