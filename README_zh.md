@@ -41,7 +41,7 @@ Skills Hub 支持同步到多种主流 AI 编码助手，包括 Antigravity, Cla
 - Rust 工具链（`rustup`，用于桌面版 Tauri 源码构建）
 - 对应系统的 Tauri 依赖： [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/)
 
-### 方案 A：通过 Homebrew 安装 App（macOS）
+### App 安装（macOS）
 
 ```bash
 brew tap PotatoDog1669/skillshub
@@ -55,7 +55,21 @@ brew update
 brew upgrade --cask skills-hub
 ```
 
-### 方案 B：通过 Homebrew 安装 CLI（macOS/Linux）
+如果安装后被 macOS 拦截或自动隔离，可跳过 quarantine 安装：
+
+```bash
+brew install --cask --no-quarantine skills-hub
+```
+
+如果已经安装，可移除 quarantine 标记：
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Skills Hub.app"
+```
+
+### CLI 安装
+
+#### 通过 Homebrew 安装 CLI（macOS/Linux）
 
 ```bash
 brew tap PotatoDog1669/skillshub
@@ -70,7 +84,7 @@ brew update
 brew upgrade skills-hub
 ```
 
-### 方案 C：通过 npm 安装 CLI
+#### 通过 npm 安装 CLI
 
 全局安装：
 
@@ -91,7 +105,7 @@ npx @skillshub-labs/cli --help
 npm i -g @skillshub-labs/cli@latest
 ```
 
-### 方案 D：从源码运行桌面版
+### 从源码运行（桌面版）
 
 ```bash
 git clone https://github.com/PotatoDog1669/skills-hub.git

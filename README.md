@@ -39,7 +39,7 @@ Skills Hub supports synchronization with a wide range of AI agents, including An
 - Rust toolchain (`rustup`) for Desktop (Tauri) source build
 - Tauri platform prerequisites for your OS: [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/)
 
-### Option A: App via Homebrew (macOS)
+### App (macOS)
 
 ```bash
 brew tap PotatoDog1669/skillshub
@@ -53,7 +53,21 @@ brew update
 brew upgrade --cask skills-hub
 ```
 
-### Option B: CLI via Homebrew (macOS/Linux)
+If macOS blocks or removes the app after install, install without quarantine:
+
+```bash
+brew install --cask --no-quarantine skills-hub
+```
+
+If already installed, remove quarantine attribute:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Skills Hub.app"
+```
+
+### CLI
+
+#### CLI via Homebrew (macOS/Linux)
 
 ```bash
 brew tap PotatoDog1669/skillshub
@@ -68,7 +82,7 @@ brew update
 brew upgrade skills-hub
 ```
 
-### Option C: CLI via npm
+#### CLI via npm
 
 Install globally:
 
@@ -89,7 +103,7 @@ Upgrade:
 npm i -g @skillshub-labs/cli@latest
 ```
 
-### Option D: Build Desktop App from Source
+### Build from Source (Desktop App)
 
 ```bash
 git clone https://github.com/PotatoDog1669/skills-hub.git
