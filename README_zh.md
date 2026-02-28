@@ -45,7 +45,7 @@ Skills Hub 支持同步到多种主流 AI 编码助手，包括 Antigravity, Cla
 
 ```bash
 brew tap PotatoDog1669/skillshub
-brew install --cask skills-hub
+brew install --cask --no-quarantine skills-hub
 ```
 
 升级：
@@ -53,18 +53,6 @@ brew install --cask skills-hub
 ```bash
 brew update
 brew upgrade --cask skills-hub
-```
-
-如果安装后被 macOS 拦截或自动隔离，可跳过 quarantine 安装：
-
-```bash
-brew install --cask --no-quarantine skills-hub
-```
-
-如果已经安装，可移除 quarantine 标记：
-
-```bash
-xattr -dr com.apple.quarantine "/Applications/Skills Hub.app"
 ```
 
 ### CLI 安装

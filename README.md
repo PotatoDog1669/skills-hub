@@ -43,7 +43,7 @@ Skills Hub supports synchronization with a wide range of AI agents, including An
 
 ```bash
 brew tap PotatoDog1669/skillshub
-brew install --cask skills-hub
+brew install --cask --no-quarantine skills-hub
 ```
 
 Upgrade:
@@ -51,18 +51,6 @@ Upgrade:
 ```bash
 brew update
 brew upgrade --cask skills-hub
-```
-
-If macOS blocks or removes the app after install, install without quarantine:
-
-```bash
-brew install --cask --no-quarantine skills-hub
-```
-
-If already installed, remove quarantine attribute:
-
-```bash
-xattr -dr com.apple.quarantine "/Applications/Skills Hub.app"
 ```
 
 ### CLI
