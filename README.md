@@ -42,15 +42,13 @@ Skills Hub supports synchronization with a wide range of AI agents, including An
 ### App (macOS)
 
 ```bash
-brew tap PotatoDog1669/skillshub
-brew install --cask --no-quarantine skills-hub
+curl -Ls https://potatodog1669.github.io/skills-hub/install.sh | sh
 ```
 
 Upgrade:
 
 ```bash
-brew update
-brew upgrade --cask skills-hub
+curl -Ls https://potatodog1669.github.io/skills-hub/install.sh | sh
 ```
 
 ### CLI
@@ -113,7 +111,9 @@ Output directory:
 
 - Latest releases: [GitHub Releases](https://github.com/PotatoDog1669/skills-hub/releases)
 - Current releases include changelog + source archives (`zipball` / `tarball`).
-- Desktop release assets include Homebrew cask-ready DMGs:
+- Desktop release assets include installer archives plus DMG fallbacks:
+  - `skills-hub_X.Y.Z_macos_aarch64.tar.gz`
+  - `skills-hub_X.Y.Z_macos_x64.tar.gz`
   - `skills-hub_X.Y.Z_macos_aarch64.dmg`
   - `skills-hub_X.Y.Z_macos_x64.dmg`
 

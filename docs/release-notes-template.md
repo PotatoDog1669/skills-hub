@@ -11,11 +11,10 @@ brew tap PotatoDog1669/skillshub
 brew install skills-hub
 ```
 
-### Homebrew Desktop App (macOS)
+### Desktop App (macOS)
 
 ```bash
-brew tap PotatoDog1669/skillshub
-brew install --cask skills-hub
+curl -Ls https://potatodog1669.github.io/skills-hub/install.sh | sh
 ```
 
 ### CLI (npm, Recommended)
@@ -40,8 +39,10 @@ npx @skillshub-labs/cli@X.Y.Z --help
 
 | Platform | Architecture | Asset Name | Notes |
 | :------- | :----------- | :--------- | :---- |
-| macOS | Apple Silicon | `skills-hub_X.Y.Z_macos_aarch64.dmg` | Used by Homebrew cask |
-| macOS | Intel | `skills-hub_X.Y.Z_macos_x64.dmg` | Used by Homebrew cask |
+| macOS | Apple Silicon | `skills-hub_X.Y.Z_macos_aarch64.tar.gz` | Used by `install.sh` |
+| macOS | Intel | `skills-hub_X.Y.Z_macos_x64.tar.gz` | Used by `install.sh` |
+| macOS | Apple Silicon | `skills-hub_X.Y.Z_macos_aarch64.dmg` | Manual fallback |
+| macOS | Intel | `skills-hub_X.Y.Z_macos_x64.dmg` | Manual fallback |
 | Windows | x64 | `skills-hub-vX.Y.Z-*.msi` | Example placeholder |
 | Linux | x64 | `skills-hub-vX.Y.Z-*.AppImage` | Example placeholder |
 
@@ -69,7 +70,7 @@ npx @skillshub-labs/cli@X.Y.Z --help
 - [ ] `npm i -g @skillshub-labs/cli@X.Y.Z` works on a clean environment
 - [ ] `skills-hub --help` and key command smoke tests pass
 - [ ] Release notes match actual shipped behavior
-- [ ] Homebrew cask install works: `brew install --cask skills-hub`
+- [ ] Desktop installer works: `curl -Ls https://potatodog1669.github.io/skills-hub/install.sh | sh`
 - [ ] Desktop assets are attached and downloadable
 
 ## Full Changelog

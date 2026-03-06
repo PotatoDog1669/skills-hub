@@ -44,15 +44,13 @@ Skills Hub 支持同步到多种主流 AI 编码助手，包括 Antigravity, Cla
 ### App 安装（macOS）
 
 ```bash
-brew tap PotatoDog1669/skillshub
-brew install --cask --no-quarantine skills-hub
+curl -Ls https://potatodog1669.github.io/skills-hub/install.sh | sh
 ```
 
 升级：
 
 ```bash
-brew update
-brew upgrade --cask skills-hub
+curl -Ls https://potatodog1669.github.io/skills-hub/install.sh | sh
 ```
 
 ### CLI 安装
@@ -115,7 +113,9 @@ npm run tauri:build
 
 - 最新版本发布页： [GitHub Releases](https://github.com/PotatoDog1669/skills-hub/releases)
 - 当前 release 默认包含变更说明和源码压缩包（`zipball` / `tarball`）。
-- 桌面版 release 资产包含可用于 Homebrew cask 的 DMG：
+- 桌面版 release 资产包含安装用归档包和备用 DMG：
+  - `skills-hub_X.Y.Z_macos_aarch64.tar.gz`
+  - `skills-hub_X.Y.Z_macos_x64.tar.gz`
   - `skills-hub_X.Y.Z_macos_aarch64.dmg`
   - `skills-hub_X.Y.Z_macos_x64.dmg`
 
