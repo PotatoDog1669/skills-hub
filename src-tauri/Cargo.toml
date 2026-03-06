@@ -1,6 +1,6 @@
 [package]
 name = "skills-hub-tauri"
-version = "0.1.17"
+version = "0.1.18"
 description = "Skills Hub Tauri desktop shell"
 authors = ["Skills Hub"]
 license = "MIT"
