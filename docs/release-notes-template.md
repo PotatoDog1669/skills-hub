@@ -14,7 +14,7 @@ brew install skills-hub
 ### Desktop App (macOS)
 
 ```bash
-curl -Ls https://potatodog1669.github.io/skills-hub/install.sh | sh
+curl -fLsS https://raw.githubusercontent.com/PotatoDog1669/skills-hub/main/install.sh | sh
 ```
 
 ### CLI (npm, Recommended)
@@ -70,7 +70,7 @@ npx @skillshub-labs/cli@X.Y.Z --help
 - [ ] `npm i -g @skillshub-labs/cli@X.Y.Z` works on a clean environment
 - [ ] `skills-hub --help` and key command smoke tests pass
 - [ ] Release notes match actual shipped behavior
-- [ ] Desktop installer works: `curl -Ls https://potatodog1669.github.io/skills-hub/install.sh | sh`
+- [ ] Desktop installer works: `curl -fLsS https://raw.githubusercontent.com/PotatoDog1669/skills-hub/main/install.sh | sh`
 - [ ] Desktop assets are attached and downloadable
 
 ## Full Changelog

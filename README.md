@@ -42,13 +42,13 @@ Skills Hub supports synchronization with a wide range of AI agents, including An
 ### App (macOS)
 
 ```bash
-curl -Ls https://potatodog1669.github.io/skills-hub/install.sh | sh
+curl -fLsS https://raw.githubusercontent.com/PotatoDog1669/skills-hub/main/install.sh | sh
 ```
 
 Upgrade:
 
 ```bash
-curl -Ls https://potatodog1669.github.io/skills-hub/install.sh | sh
+curl -fLsS https://raw.githubusercontent.com/PotatoDog1669/skills-hub/main/install.sh | sh
 ```
 
 ### CLI

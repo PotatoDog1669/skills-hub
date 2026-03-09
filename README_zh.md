@@ -44,13 +44,13 @@ Skills Hub 支持同步到多种主流 AI 编码助手，包括 Antigravity, Cla
 ### App 安装（macOS）
 
 ```bash
-curl -Ls https://potatodog1669.github.io/skills-hub/install.sh | sh
+curl -fLsS https://raw.githubusercontent.com/PotatoDog1669/skills-hub/main/install.sh | sh
 ```
 
 升级：
 
 ```bash
-curl -Ls https://potatodog1669.github.io/skills-hub/install.sh | sh
+curl -fLsS https://raw.githubusercontent.com/PotatoDog1669/skills-hub/main/install.sh | sh
 ```
 
 ### CLI 安装
