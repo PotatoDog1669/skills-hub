@@ -14,7 +14,12 @@ import { Download, Plus } from 'lucide-react'
 import Link from '@/apps/desktop-ui/src/shims/link'
 import { ProviderPanel } from './ProviderPanel'
 import type { AppType, ProviderRecord, UniversalProviderRecord } from '@/lib/core/provider-types'
-import type { KitLoadoutRecord, KitPolicyRecord, KitRecord } from '@/lib/core/kit-types'
+import type {
+  KitLoadoutRecord,
+  KitPolicyRecord,
+  KitRecord,
+  OfficialPresetSummary,
+} from '@/lib/core/kit-types'
 import { KitPanel } from './KitPanel'
 import { SkillsMarketView } from './SkillsMarketView'
 import {
@@ -34,6 +39,7 @@ interface DashboardProps {
   kitPolicies: KitPolicyRecord[]
   kitLoadouts: KitLoadoutRecord[]
   kits: KitRecord[]
+  officialPresets: OfficialPresetSummary[]
 }
 
 function PlaceholderCard({ title, text }: { title: string; text: string }) {
@@ -54,6 +60,7 @@ export function Dashboard({
   kitPolicies,
   kitLoadouts,
   kits,
+  officialPresets,
 }: DashboardProps) {
   const searchParams = useSearchParams()
   const rawView = searchParams.get('view') || 'inventory-skills'
@@ -169,19 +176,22 @@ export function Dashboard({
 
   if (currentView === 'inventory-kit') {
     return (
-      <div className="container py-8 space-y-6">
-        <div className="flex items-center justify-between">
+      <div className="container flex min-h-0 flex-col py-5 lg:h-[calc(100dvh-4rem)] lg:overflow-hidden">
+        <div className="mb-4 flex shrink-0 items-center justify-between">
           <h1 className="text-3xl font-bold">{title}</h1>
           <span className="text-sm text-gray-500">{kits.length} kits</span>
         </div>
-        <KitPanel
-          policies={kitPolicies}
-          loadouts={kitLoadouts}
-          kits={kits}
-          skills={skills}
-          projects={config.projects}
-          agents={config.agents}
-        />
+        <div className="min-h-0 lg:flex-1">
+          <KitPanel
+            policies={kitPolicies}
+            loadouts={kitLoadouts}
+            kits={kits}
+            officialPresets={officialPresets}
+            skills={skills}
+            projects={config.projects}
+            agents={config.agents}
+          />
+        </div>
       </div>
     )
   }

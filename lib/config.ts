@@ -1,6 +1,7 @@
 import fs from 'fs-extra'
 import path from 'path'
 import os from 'os'
+import { DEFAULT_INSTRUCTION_FILE_NAME, getAgentInstructionFileName } from '@/lib/core/agent-config'
 
 const CONFIG_PATH = path.join(os.homedir(), '.skills-hub', 'config.json')
 const CONFIG_DIR = path.dirname(CONFIG_PATH)
@@ -36,15 +37,19 @@ export interface AgentConfig {
   name: string
   globalPath: string // Path to global skills directory e.g., ~/.gemini/antigravity/skills
   projectPath: string // Relative path in project e.g., .agent/skills
+  instructionFileName?: string // Project instruction file e.g., AGENTS.md or CLAUDE.md
   enabled: boolean
   isCustom: boolean
 }
+
+export { DEFAULT_INSTRUCTION_FILE_NAME, getAgentInstructionFileName } from '@/lib/core/agent-config'
 
 const DEFAULT_AGENTS: AgentConfig[] = [
   {
     name: 'Antigravity',
     globalPath: path.join(os.homedir(), '.gemini/antigravity/skills'),
     projectPath: '.agent/skills',
+    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
     enabled: true,
     isCustom: false,
   },
@@ -52,6 +57,7 @@ const DEFAULT_AGENTS: AgentConfig[] = [
     name: 'Claude Code',
     globalPath: path.join(os.homedir(), '.claude/skills'),
     projectPath: '.claude/skills',
+    instructionFileName: 'CLAUDE.md',
     enabled: true,
     isCustom: false,
   },
@@ -59,13 +65,31 @@ const DEFAULT_AGENTS: AgentConfig[] = [
     name: 'Cursor',
     globalPath: path.join(os.homedir(), '.cursor/skills'),
     projectPath: '.cursor/skills',
+    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
     enabled: true,
     isCustom: false,
   },
   {
+    name: 'OpenClaw',
+    globalPath: path.join(os.homedir(), '.openclaw/skills'),
+    projectPath: 'skills',
+    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
+    enabled: false,
+    isCustom: false,
+  },
+  {
+    name: 'CodeBuddy',
+    globalPath: path.join(os.homedir(), '.codebuddy/skills'),
+    projectPath: '.codebuddy/skills',
+    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
+    enabled: false,
+    isCustom: false,
+  },
+  {
     name: 'OpenCode',
-    globalPath: path.join(os.homedir(), '.config/opencode/skill'),
-    projectPath: '.opencode/skill',
+    globalPath: path.join(os.homedir(), '.config/opencode/skills'),
+    projectPath: '.agents/skills',
+    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
     enabled: false,
     isCustom: false,
   },
@@ -73,13 +97,15 @@ const DEFAULT_AGENTS: AgentConfig[] = [
     name: 'Codex',
     globalPath: path.join(os.homedir(), '.codex/skills'),
     projectPath: '.codex/skills',
+    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
     enabled: false,
     isCustom: false,
   },
   {
-    name: 'Amp',
+    name: 'Kimi Code CLI',
     globalPath: path.join(os.homedir(), '.config/agents/skills'),
     projectPath: '.agents/skills',
+    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
     enabled: false,
     isCustom: false,
   },
@@ -87,20 +113,15 @@ const DEFAULT_AGENTS: AgentConfig[] = [
     name: 'Kilo Code',
     globalPath: path.join(os.homedir(), '.kilocode/skills'),
     projectPath: '.kilocode/skills',
+    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
     enabled: false,
     isCustom: false,
   },
   {
-    name: 'Roo Code',
-    globalPath: path.join(os.homedir(), '.roo/skills'),
-    projectPath: '.roo/skills',
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Goose',
-    globalPath: path.join(os.homedir(), '.config/goose/skills'),
-    projectPath: '.goose/skills',
+    name: 'Kiro CLI',
+    globalPath: path.join(os.homedir(), '.kiro/skills'),
+    projectPath: '.kiro/skills',
+    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
     enabled: false,
     isCustom: false,
   },
@@ -108,6 +129,7 @@ const DEFAULT_AGENTS: AgentConfig[] = [
     name: 'Gemini CLI',
     globalPath: path.join(os.homedir(), '.gemini/skills'),
     projectPath: '.gemini/skills',
+    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
     enabled: false,
     isCustom: false,
   },
@@ -115,20 +137,7 @@ const DEFAULT_AGENTS: AgentConfig[] = [
     name: 'GitHub Copilot',
     globalPath: path.join(os.homedir(), '.copilot/skills'),
     projectPath: '.github/skills',
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Clawdbot',
-    globalPath: path.join(os.homedir(), '.clawdbot/skills'),
-    projectPath: 'skills',
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Droid',
-    globalPath: path.join(os.homedir(), '.factory/skills'),
-    projectPath: '.factory/skills',
+    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
     enabled: false,
     isCustom: false,
   },
@@ -136,6 +145,23 @@ const DEFAULT_AGENTS: AgentConfig[] = [
     name: 'Windsurf',
     globalPath: path.join(os.homedir(), '.codeium/windsurf/skills'),
     projectPath: '.windsurf/skills',
+    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
+    enabled: false,
+    isCustom: false,
+  },
+  {
+    name: 'Trae',
+    globalPath: path.join(os.homedir(), '.trae/skills'),
+    projectPath: '.trae/skills',
+    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
+    enabled: false,
+    isCustom: false,
+  },
+  {
+    name: 'Trae CN',
+    globalPath: path.join(os.homedir(), '.trae-cn/skills'),
+    projectPath: '.trae/skills',
+    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
     enabled: false,
     isCustom: false,
   },
@@ -143,6 +169,15 @@ const DEFAULT_AGENTS: AgentConfig[] = [
     name: 'Qoder',
     globalPath: path.join(os.homedir(), '.qoder/skills'),
     projectPath: '.qoder/skills',
+    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
+    enabled: false,
+    isCustom: false,
+  },
+  {
+    name: 'Qwen Code',
+    globalPath: path.join(os.homedir(), '.qwen/skills'),
+    projectPath: '.qwen/skills',
+    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
     enabled: false,
     isCustom: false,
   },
@@ -153,6 +188,47 @@ const DEFAULT_CONFIG: AppConfig = {
   projects: [],
   scanRoots: [path.join(os.homedir(), 'workspace')],
   agents: DEFAULT_AGENTS,
+}
+
+function mergeAgentsPreservingOrder(userAgents: AgentConfig[] | undefined): AgentConfig[] {
+  const storedAgents = userAgents || []
+  const defaultAgentsByName = new Map(DEFAULT_AGENTS.map((agent) => [agent.name, agent]))
+  const seenAgentNames = new Set<string>()
+  const mergedAgents: AgentConfig[] = []
+
+  for (const storedAgent of storedAgents) {
+    if (seenAgentNames.has(storedAgent.name)) {
+      continue
+    }
+
+    const defaultAgent = defaultAgentsByName.get(storedAgent.name)
+    if (defaultAgent) {
+      mergedAgents.push({
+        ...defaultAgent,
+        enabled: storedAgent.enabled,
+        projectPath: storedAgent.projectPath,
+        globalPath: storedAgent.globalPath,
+        instructionFileName: getAgentInstructionFileName(storedAgent),
+      })
+      seenAgentNames.add(storedAgent.name)
+      continue
+    }
+
+    mergedAgents.push({
+      ...storedAgent,
+      instructionFileName: getAgentInstructionFileName(storedAgent),
+    })
+    seenAgentNames.add(storedAgent.name)
+  }
+
+  for (const defaultAgent of DEFAULT_AGENTS) {
+    if (seenAgentNames.has(defaultAgent.name)) {
+      continue
+    }
+    mergedAgents.push(defaultAgent)
+  }
+
+  return mergedAgents
 }
 
 export async function getConfig(): Promise<AppConfig> {
@@ -175,25 +251,6 @@ export async function getConfig(): Promise<AppConfig> {
       return DEFAULT_CONFIG
     }
 
-    // Smart merge for agents
-    const mergedAgents = [...DEFAULT_AGENTS]
-    const userAgents = userConfig.agents || []
-
-    // 1. Update state of built-in agents from user config
-    mergedAgents.forEach((agent, index) => {
-      const userAgent = userAgents.find((ua: AgentConfig) => ua.name === agent.name)
-      if (userAgent) {
-        mergedAgents[index] = {
-          ...agent,
-          enabled: userAgent.enabled,
-          projectPath: userAgent.projectPath,
-          globalPath: userAgent.globalPath,
-        }
-      }
-    })
-
-    // 2. Add custom agents from user config
-    const customAgents = userAgents.filter((ua: AgentConfig) => ua.isCustom)
     const normalizedProjects = dedupeNormalizedPaths(userConfig.projects)
     const normalizedScanRoots = userConfig.scanRoots
       ? dedupeNormalizedPaths(userConfig.scanRoots)
@@ -204,7 +261,7 @@ export async function getConfig(): Promise<AppConfig> {
       ...userConfig,
       projects: normalizedProjects,
       scanRoots: normalizedScanRoots ?? DEFAULT_CONFIG.scanRoots,
-      agents: [...mergedAgents, ...customAgents],
+      agents: mergeAgentsPreservingOrder(userConfig.agents),
     }
   } catch (error) {
     console.warn('Failed to load config; using defaults.', error)
@@ -255,11 +312,15 @@ export async function removeScanRoot(rootPath: string): Promise<void> {
 
 export async function updateAgentConfig(agent: AgentConfig): Promise<void> {
   const config = await getConfig()
+  const normalizedAgent = {
+    ...agent,
+    instructionFileName: getAgentInstructionFileName(agent),
+  }
   const index = config.agents.findIndex((a) => a.name === agent.name)
   if (index >= 0) {
-    config.agents[index] = agent
+    config.agents[index] = normalizedAgent
   } else {
-    config.agents.push(agent)
+    config.agents.push(normalizedAgent)
   }
   await saveConfig(config)
 }

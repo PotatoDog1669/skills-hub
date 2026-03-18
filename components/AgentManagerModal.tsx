@@ -9,6 +9,8 @@ import {
   actionRemoveAgentConfig,
   actionPickDirectory,
 } from '@/apps/desktop-ui/src/tauri-actions'
+import { AgentBrandIcon, inferAgentBrand } from './AgentBrandIcon'
+import { useConfirm } from './ConfirmProvider'
 
 interface AgentManagerModalProps {
   config: AppConfig
@@ -19,6 +21,7 @@ interface AgentManagerModalProps {
 export function AgentManagerModal({ config, isOpen, onClose }: AgentManagerModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
+  const { confirm } = useConfirm()
 
   // Custom Agent Form State
   const [newName, setNewName] = useState('')
@@ -36,12 +39,19 @@ export function AgentManagerModal({ config, isOpen, onClose }: AgentManagerModal
   }
 
   const handleRemoveCustom = async (name: string) => {
-    if (confirm(`Remove custom agent "${name}"?`)) {
-      try {
-        await actionRemoveAgentConfig(name)
-      } catch (e) {
-        alert('Failed to remove agent: ' + e)
-      }
+    const confirmed = await confirm({
+      title: '删除自定义 Agent',
+      message: `删除自定义 Agent「${name}」？`,
+      type: 'danger',
+      confirmText: '删除',
+      cancelText: '取消',
+    })
+    if (!confirmed) return
+
+    try {
+      await actionRemoveAgentConfig(name)
+    } catch (e) {
+      alert('Failed to remove agent: ' + e)
     }
   }
 
@@ -79,6 +89,22 @@ export function AgentManagerModal({ config, isOpen, onClose }: AgentManagerModal
   const builtInAgents = config.agents.filter((a) => !a.isCustom)
   const customAgents = config.agents.filter((a) => a.isCustom)
 
+  const renderAgentLabel = (agent: AgentConfig) => {
+    const brandApp = inferAgentBrand(agent.name)
+
+    return (
+      <div className="flex items-center gap-2 text-sm font-medium mb-2">
+        {brandApp ? (
+          <AgentBrandIcon app={brandApp} className="h-4 w-4 shrink-0" />
+        ) : (
+          <Terminal size={14} className="shrink-0 text-muted-foreground" />
+        )}
+        <span>{agent.name}</span>
+        <span className="text-muted-foreground font-normal opacity-70">{agent.projectPath}</span>
+      </div>
+    )
+  }
+
   return (
     <div className={styles.overlay} onClick={onClose}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
@@ -99,12 +125,7 @@ export function AgentManagerModal({ config, isOpen, onClose }: AgentManagerModal
             <div className={styles.list}>
               {builtInAgents.map((agent) => (
                 <div key={agent.name} className="border rounded p-3">
-                  <div className="text-sm font-medium mb-2">
-                    {agent.name}{' '}
-                    <span className="text-muted-foreground font-normal opacity-70">
-                      {agent.projectPath}
-                    </span>
-                  </div>
+                  {renderAgentLabel(agent)}
                   <input
                     type="checkbox"
                     className="h-4 w-4 rounded border-gray-300 text-[#d97757] focus:ring-[#d97757] cursor-pointer"
@@ -178,12 +199,7 @@ export function AgentManagerModal({ config, isOpen, onClose }: AgentManagerModal
             <div className={styles.list}>
               {customAgents.map((agent) => (
                 <div key={agent.name} className="border rounded p-3">
-                  <div className="text-sm font-medium mb-2">
-                    {agent.name}{' '}
-                    <span className="text-muted-foreground font-normal opacity-70">
-                      {agent.projectPath}
-                    </span>
-                  </div>
+                  {renderAgentLabel(agent)}
                   <div className="flex flex-col gap-2">
                     <input
                       type="checkbox"

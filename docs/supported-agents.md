@@ -9,19 +9,20 @@ Skills Hub supports synchronization with a wide range of AI agents. Below is the
 | **Antigravity**    | `~/.gemini/antigravity/skills` | `.agent/skills`            |
 | **Claude Code**    | `~/.claude/skills`             | `.claude/skills`           |
 | **Cursor**         | `~/.cursor/skills`             | `.cursor/skills`           |
-| **Trae**           | `~/.trae/skills`               | `.trae/skills`             |
-| **Windsurf**       | `~/.codeium/windsurf/skills`   | `.windsurf/skills`         |
-| **OpenCode**       | `~/.config/opencode/skill`     | `.opencode/skill`          |
+| **OpenClaw**       | `~/.openclaw/skills`           | `skills`                   |
+| **CodeBuddy**      | `~/.codebuddy/skills`          | `.codebuddy/skills`        |
+| **OpenCode**       | `~/.config/opencode/skills`    | `.agents/skills`           |
 | **Codex**          | `~/.codex/skills`              | `.codex/skills` or `.agents/skills` |
-| **Amp**            | `~/.config/agents/skills`      | `.agents/skills`           |
+| **Kimi Code CLI**  | `~/.config/agents/skills`      | `.agents/skills`           |
 | **Kilo Code**      | `~/.kilocode/skills`           | `.kilocode/skills`         |
-| **Roo Code**       | `~/.roo/skills`                | `.roo/skills`              |
-| **Goose**          | `~/.config/goose/skills`       | `.goose/skills`            |
+| **Kiro CLI**       | `~/.kiro/skills`               | `.kiro/skills`             |
 | **Gemini CLI**     | `~/.gemini/skills`             | `.gemini/skills`           |
 | **GitHub Copilot** | `~/.copilot/skills`            | `.github/skills`           |
-| **Clawdbot**       | `~/.clawdbot/skills`           | `skills`                   |
-| **Droid**          | `~/.factory/skills`            | `.factory/skills`          |
+| **Trae**           | `~/.trae/skills`               | `.trae/skills`             |
+| **Trae CN**        | `~/.trae-cn/skills`            | `.trae/skills`             |
+| **Windsurf**       | `~/.codeium/windsurf/skills`   | `.windsurf/skills`         |
 | **Qoder**          | `~/.qoder/skills`              | `.qoder/skills`            |
+| **Qwen Code**      | `~/.qwen/skills`               | `.qwen/skills`             |
 
 ## How it Works
 

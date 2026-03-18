@@ -5,6 +5,8 @@ import os from 'os'
 import path from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+const now = 1_700_000_000_000
+
 async function importCore() {
   vi.resetModules()
   return import('../lib/core/kit-core.mjs')
@@ -168,5 +170,118 @@ describe('kit core', () => {
       projectPath: '/tmp/project-a',
       agentName: 'Claude Code',
     })
+  })
+
+  it('allows policy-only and loadout-only kits', async () => {
+    const core = await importCore()
+
+    const policy = core.addKitPolicy({
+      name: 'policy-only',
+      content: '# AGENTS\npolicy-only',
+    })
+    const loadout = core.addKitLoadout({
+      name: 'loadout-only',
+      items: [{ skillPath: '/tmp/skills/solo', mode: 'copy', sortOrder: 0 }],
+    })
+
+    const policyOnlyKit = core.addKit({
+      name: 'policy-kit',
+      policyId: policy!.id,
+    })
+    const loadoutOnlyKit = core.addKit({
+      name: 'loadout-kit',
+      loadoutId: loadout!.id,
+    })
+
+    expect(policyOnlyKit?.policyId).toBe(policy!.id)
+    expect(policyOnlyKit?.loadoutId).toBeUndefined()
+    expect(loadoutOnlyKit?.policyId).toBeUndefined()
+    expect(loadoutOnlyKit?.loadoutId).toBe(loadout!.id)
+
+    expect(() =>
+      core.addKit({
+        name: 'invalid-kit',
+      })
+    ).toThrow(/at least AGENTS\.md or Skills package/)
+  })
+
+  it('restores a managed official kit baseline', async () => {
+    const core = await importCore()
+
+    const policy = core.addKitPolicy({
+      name: 'Recommended: Fullstack',
+      content: '# AGENTS\nbaseline',
+    })
+    const loadout = core.addKitLoadout({
+      name: 'Official: Fullstack',
+      items: [{ skillPath: '/tmp/skills/a', mode: 'copy', sortOrder: 0 }],
+    })
+
+    const kit = core.addKit({
+      name: 'Official: Fullstack',
+      description: 'baseline',
+      policyId: policy!.id,
+      loadoutId: loadout!.id,
+      managedSource: {
+        kind: 'official_preset',
+        presetId: 'fullstack-product-engineering',
+        presetName: 'Fullstack Product Engineering',
+        catalogVersion: 2,
+        installedAt: now,
+        restoreCount: 0,
+        baseline: {
+          name: 'Official: Fullstack',
+          description: 'baseline',
+          policy: {
+            id: policy!.id,
+            name: policy!.name,
+            description: policy!.description,
+            content: policy!.content,
+          },
+          loadout: {
+            id: loadout!.id,
+            name: loadout!.name,
+            description: loadout!.description,
+            items: loadout!.items,
+          },
+        },
+        securityChecks: [],
+      },
+    })
+
+    core.updateKitPolicy({
+      id: policy!.id,
+      name: 'Edited Policy',
+      content: '# AGENTS\nedited',
+    })
+    core.updateKitLoadout({
+      id: loadout!.id,
+      items: [{ skillPath: '/tmp/skills/edited', mode: 'copy', sortOrder: 0 }],
+    })
+    core.updateKit({
+      id: kit!.id,
+      name: 'Edited Kit',
+      description: 'edited',
+    })
+
+    const restored = core.restoreManagedKitBaseline(kit!.id)
+    expect(restored).toBeTruthy()
+    expect(restored!.name).toBe('Official: Fullstack')
+    expect(restored!.description).toBe('baseline')
+    expect(restored!.managedSource?.restoreCount).toBe(1)
+    expect(restored!.managedSource?.lastRestoredAt).toBeTypeOf('number')
+
+    const restoredPolicy = core.getKitPolicyById(policy!.id)
+    expect(restoredPolicy?.name).toBe('Recommended: Fullstack')
+    expect(restoredPolicy?.content).toContain('baseline')
+
+    const restoredLoadout = core.getKitLoadoutById(loadout!.id)
+    expect(restoredLoadout?.items).toEqual([
+      {
+        skillPath: '/tmp/skills/a',
+        mode: 'copy',
+        sortOrder: 0,
+      },
+    ])
   })
 })

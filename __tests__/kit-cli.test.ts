@@ -160,10 +160,252 @@ describe('kit CLI', () => {
     expect(applied.stdout).toContain('Kit applied:')
 
     const agentsPath = path.join(projectPath, 'AGENTS.md')
-    expect(await fs.pathExists(agentsPath)).toBe(true)
-    expect(await fs.readFile(agentsPath, 'utf-8')).toContain('Use strict TS.')
+    const claudePath = path.join(projectPath, 'CLAUDE.md')
+    expect(await fs.pathExists(agentsPath)).toBe(false)
+    expect(await fs.pathExists(claudePath)).toBe(true)
+    expect(await fs.readFile(claudePath, 'utf-8')).toContain('Use strict TS.')
 
     const syncedSkillPath = path.join(projectPath, '.claude', 'skills', 'frontend-toolkit')
     expect(await fs.pathExists(path.join(syncedSkillPath, 'SKILL.md'))).toBe(true)
-  })
+  }, 20_000)
+
+  it('applies loadout-only kit without writing AGENTS.md', async () => {
+    const env = {
+      ...process.env,
+      HOME: tempHome,
+    }
+
+    const projectPath = path.join(tempRoot, 'project-b')
+    const skillPath = path.join(tempRoot, 'hub-skills', 'skill-only-toolkit')
+    await fs.ensureDir(projectPath)
+    await fs.ensureDir(skillPath)
+    await fs.writeFile(path.join(skillPath, 'SKILL.md'), '# Skill Only Toolkit\n', 'utf-8')
+
+    const configPath = path.join(tempHome, '.skills-hub', 'config.json')
+    await fs.ensureDir(path.dirname(configPath))
+    await fs.writeJson(
+      configPath,
+      {
+        hubPath: path.join(tempHome, 'skills-hub'),
+        projects: [projectPath],
+        scanRoots: [],
+        agents: [
+          {
+            name: 'Claude Code',
+            globalPath: path.join(tempHome, '.claude', 'skills'),
+            projectPath: '.claude/skills',
+            enabled: true,
+            isCustom: false,
+          },
+        ],
+      },
+      { spaces: 2 }
+    )
+
+    await execFileAsync(
+      'node',
+      [
+        'bin/skills-hub',
+        'kit',
+        'loadout-add',
+        '--name',
+        'skill-only-loadout',
+        '--skills',
+        skillPath,
+      ],
+      { cwd: repoRoot, env }
+    )
+
+    const loadoutListed = await execFileAsync('node', ['bin/skills-hub', 'kit', 'loadout-list'], {
+      cwd: repoRoot,
+      env,
+    })
+    const loadoutId = loadoutListed.stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.includes('skill-only-loadout'))
+      ?.split('|')[0]
+      ?.replace(/^-\s*/, '')
+      ?.trim()
+    expect(loadoutId).toBeTruthy()
+
+    const kitAdded = await execFileAsync(
+      'node',
+      [
+        'bin/skills-hub',
+        'kit',
+        'add',
+        '--name',
+        'skill-only-kit',
+        '--loadout-id',
+        loadoutId!,
+      ],
+      { cwd: repoRoot, env }
+    )
+    expect(kitAdded.stdout).toContain('Kit created:')
+
+    const kitListed = await execFileAsync('node', ['bin/skills-hub', 'kit', 'list'], {
+      cwd: repoRoot,
+      env,
+    })
+    const kitId = kitListed.stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.includes('skill-only-kit'))
+      ?.split('|')[0]
+      ?.replace(/^-\s*/, '')
+      ?.trim()
+    expect(kitId).toBeTruthy()
+
+    const applied = await execFileAsync(
+      'node',
+      [
+        'bin/skills-hub',
+        'kit',
+        'apply',
+        '--id',
+        kitId!,
+        '--project',
+        projectPath,
+        '--agent',
+        'Claude Code',
+        '--mode',
+        'copy',
+      ],
+      { cwd: repoRoot, env }
+    )
+    expect(applied.stdout).toContain('Kit applied:')
+    expect(applied.stdout).not.toContain('policy=')
+    expect(await fs.pathExists(path.join(projectPath, 'AGENTS.md'))).toBe(false)
+    expect(await fs.pathExists(path.join(projectPath, 'CLAUDE.md'))).toBe(false)
+    expect(
+      await fs.pathExists(path.join(projectPath, '.claude', 'skills', 'skill-only-toolkit', 'SKILL.md'))
+    ).toBe(true)
+  }, 20_000)
+
+  it('applies kit with temporary --with/--without skill overrides', async () => {
+    const env = {
+      ...process.env,
+      HOME: tempHome,
+    }
+
+    const projectPath = path.join(tempRoot, 'project-c')
+    const hubPath = path.join(tempHome, 'skills-hub')
+    const baseSkillPath = path.join(hubPath, 'base-toolkit')
+    const removeSkillPath = path.join(hubPath, 'remove-me-toolkit')
+    const extraSkillPath = path.join(hubPath, 'extra-toolkit')
+
+    await fs.ensureDir(projectPath)
+    await fs.ensureDir(baseSkillPath)
+    await fs.ensureDir(removeSkillPath)
+    await fs.ensureDir(extraSkillPath)
+    await fs.writeFile(path.join(baseSkillPath, 'SKILL.md'), '# Base Toolkit\n', 'utf-8')
+    await fs.writeFile(path.join(removeSkillPath, 'SKILL.md'), '# Remove Me Toolkit\n', 'utf-8')
+    await fs.writeFile(path.join(extraSkillPath, 'SKILL.md'), '# Extra Toolkit\n', 'utf-8')
+
+    const configPath = path.join(tempHome, '.skills-hub', 'config.json')
+    await fs.ensureDir(path.dirname(configPath))
+    await fs.writeJson(
+      configPath,
+      {
+        hubPath,
+        projects: [projectPath],
+        scanRoots: [],
+        agents: [
+          {
+            name: 'Claude Code',
+            globalPath: path.join(tempHome, '.claude', 'skills'),
+            projectPath: '.claude/skills',
+            enabled: true,
+            isCustom: false,
+          },
+        ],
+      },
+      { spaces: 2 }
+    )
+
+    await execFileAsync(
+      'node',
+      [
+        'bin/skills-hub',
+        'kit',
+        'loadout-add',
+        '--name',
+        'override-loadout',
+        '--skills',
+        [baseSkillPath, removeSkillPath].join(','),
+      ],
+      { cwd: repoRoot, env }
+    )
+
+    const loadoutListed = await execFileAsync('node', ['bin/skills-hub', 'kit', 'loadout-list'], {
+      cwd: repoRoot,
+      env,
+    })
+    const loadoutId = loadoutListed.stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.includes('override-loadout'))
+      ?.split('|')[0]
+      ?.replace(/^-\s*/, '')
+      ?.trim()
+    expect(loadoutId).toBeTruthy()
+
+    await execFileAsync(
+      'node',
+      [
+        'bin/skills-hub',
+        'kit',
+        'add',
+        '--name',
+        'override-kit',
+        '--loadout-id',
+        loadoutId!,
+      ],
+      { cwd: repoRoot, env }
+    )
+
+    const kitListed = await execFileAsync('node', ['bin/skills-hub', 'kit', 'list'], {
+      cwd: repoRoot,
+      env,
+    })
+    const kitId = kitListed.stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.includes('override-kit'))
+      ?.split('|')[0]
+      ?.replace(/^-\s*/, '')
+      ?.trim()
+    expect(kitId).toBeTruthy()
+
+    await execFileAsync(
+      'node',
+      [
+        'bin/skills-hub',
+        'kit',
+        'apply',
+        '--id',
+        kitId!,
+        '--project',
+        projectPath,
+        '--agent',
+        'Claude Code',
+        '--without',
+        'remove-me-toolkit',
+        '--with',
+        'extra-toolkit',
+      ],
+      { cwd: repoRoot, env }
+    )
+
+    expect(
+      await fs.pathExists(path.join(projectPath, '.claude', 'skills', 'base-toolkit', 'SKILL.md'))
+    ).toBe(true)
+    expect(
+      await fs.pathExists(path.join(projectPath, '.claude', 'skills', 'extra-toolkit', 'SKILL.md'))
+    ).toBe(true)
+    expect(
+      await fs.pathExists(path.join(projectPath, '.claude', 'skills', 'remove-me-toolkit'))
+    ).toBe(false)
+  }, 20_000)
 })

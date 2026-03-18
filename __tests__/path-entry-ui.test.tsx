@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import type { AnchorHTMLAttributes, ReactNode } from 'react'
 import { Sidebar } from '@/components/Sidebar'
 import { SettingsModal } from '@/components/SettingsModal'
 import { AgentManagerModal } from '@/components/AgentManagerModal'
@@ -11,6 +11,7 @@ const { promptMock, confirmMock, actionMocks } = vi.hoisted(() => ({
   confirmMock: vi.fn(),
   actionMocks: {
     actionAddProject: vi.fn(),
+    actionReorderProjects: vi.fn(),
     actionRemoveProject: vi.fn(),
     actionAddScanRoot: vi.fn(),
     actionRemoveScanRoot: vi.fn(),
@@ -18,12 +19,18 @@ const { promptMock, confirmMock, actionMocks } = vi.hoisted(() => ({
     actionAddScannedProjects: vi.fn(),
     actionPickDirectory: vi.fn(),
     actionUpdateAgentConfig: vi.fn(),
+    actionReorderAgents: vi.fn(),
     actionRemoveAgentConfig: vi.fn(),
   },
 }))
 
 vi.mock('@/apps/desktop-ui/src/shims/link', () => ({
-  default: ({ children }: { children: ReactNode }) => <a>{children}</a>,
+  default: ({
+    children,
+    ...props
+  }: { children: ReactNode } & AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a {...props}>{children}</a>
+  ),
 }))
 
 vi.mock('@/apps/desktop-ui/src/shims/navigation', () => ({
@@ -39,6 +46,7 @@ vi.mock('@/components/ConfirmProvider', () => ({
 
 vi.mock('@/apps/desktop-ui/src/tauri-actions', () => ({
   actionAddProject: actionMocks.actionAddProject,
+  actionReorderProjects: actionMocks.actionReorderProjects,
   actionRemoveProject: actionMocks.actionRemoveProject,
   actionAddScanRoot: actionMocks.actionAddScanRoot,
   actionRemoveScanRoot: actionMocks.actionRemoveScanRoot,
@@ -46,6 +54,7 @@ vi.mock('@/apps/desktop-ui/src/tauri-actions', () => ({
   actionAddScannedProjects: actionMocks.actionAddScannedProjects,
   actionPickDirectory: actionMocks.actionPickDirectory,
   actionUpdateAgentConfig: actionMocks.actionUpdateAgentConfig,
+  actionReorderAgents: actionMocks.actionReorderAgents,
   actionRemoveAgentConfig: actionMocks.actionRemoveAgentConfig,
 }))
 
@@ -112,6 +121,42 @@ describe('path entry UI', () => {
     })
   })
 
+  it('confirms before removing a custom agent in AgentManagerModal', async () => {
+    confirmMock.mockResolvedValue(true)
+
+    render(
+      <AgentManagerModal
+        config={{
+          ...baseConfig,
+          agents: [
+            {
+              name: 'MyBot',
+              globalPath: '/tmp/global-skills',
+              projectPath: '.agent/skills',
+              enabled: true,
+              isCustom: true,
+            },
+          ],
+        }}
+        isOpen={true}
+        onClose={vi.fn()}
+      />
+    )
+
+    fireEvent.click(screen.getByTitle('Remove Agent'))
+
+    await waitFor(() =>
+      expect(confirmMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: '删除自定义 Agent',
+          type: 'danger',
+          confirmText: '删除',
+        })
+      )
+    )
+    await waitFor(() => expect(actionMocks.actionRemoveAgentConfig).toHaveBeenCalledWith('MyBot'))
+  })
+
   it('scans candidates and adds only selected projects in SettingsModal', async () => {
     actionMocks.actionScanProjects.mockResolvedValue(['/tmp/repo-a', '/tmp/repo-b'])
     actionMocks.actionAddScannedProjects.mockResolvedValue(1)
@@ -128,6 +173,143 @@ describe('path entry UI', () => {
 
     await waitFor(() =>
       expect(actionMocks.actionAddScannedProjects).toHaveBeenCalledWith(['/tmp/repo-a'])
+    )
+  })
+
+  it('renders the official logo asset for newly supported agents in Sidebar', () => {
+    const config: AppConfig = {
+      ...baseConfig,
+      agents: [
+        {
+          name: 'Windsurf',
+          globalPath: '/tmp/.codeium/windsurf/skills',
+          projectPath: '.windsurf/skills',
+          enabled: true,
+          isCustom: false,
+        },
+      ],
+    }
+
+    const { container } = render(<Sidebar config={config} />)
+    const logo = container.querySelector('img[src="/agent-logos/windsurf.svg"]')
+
+    expect(logo).toBeTruthy()
+  })
+
+  it('renders the GitHub icon for GitHub Copilot', () => {
+    const config: AppConfig = {
+      ...baseConfig,
+      agents: [
+        {
+          name: 'GitHub Copilot',
+          globalPath: '/tmp/.copilot/skills',
+          projectPath: '.github/skills',
+          enabled: true,
+          isCustom: false,
+        },
+      ],
+    }
+
+    render(<Sidebar config={config} />)
+
+    expect(screen.getByTestId('agent-brand-github-copilot')).toBeTruthy()
+  })
+
+  it('reorders projects via drag and drop in Sidebar', async () => {
+    const config: AppConfig = {
+      ...baseConfig,
+      projects: ['/tmp/repo-a', '/tmp/repo-b', '/tmp/repo-c'],
+    }
+    const dataTransfer = {
+      setData: vi.fn(),
+      getData: vi.fn(() => '/tmp/repo-c'),
+      effectAllowed: 'move',
+      dropEffect: 'move',
+    }
+
+    render(<Sidebar config={config} />)
+
+    fireEvent.dragStart(
+      screen.getByTestId(`sidebar-project-${encodeURIComponent('/tmp/repo-c')}`),
+      {
+        dataTransfer,
+      }
+    )
+    fireEvent.dragOver(screen.getByTestId(`sidebar-project-${encodeURIComponent('/tmp/repo-a')}`), {
+      dataTransfer,
+    })
+    fireEvent.drop(screen.getByTestId(`sidebar-project-${encodeURIComponent('/tmp/repo-a')}`), {
+      dataTransfer,
+    })
+
+    await waitFor(() =>
+      expect(actionMocks.actionReorderProjects).toHaveBeenCalledWith([
+        '/tmp/repo-c',
+        '/tmp/repo-a',
+        '/tmp/repo-b',
+      ])
+    )
+  })
+
+  it('reorders enabled agents via drag and drop in Sidebar', async () => {
+    const config: AppConfig = {
+      ...baseConfig,
+      agents: [
+        {
+          name: 'Antigravity',
+          globalPath: '/tmp/a',
+          projectPath: '.agent/skills',
+          enabled: true,
+          isCustom: false,
+        },
+        {
+          name: 'Cursor',
+          globalPath: '/tmp/cursor',
+          projectPath: '.cursor/skills',
+          enabled: true,
+          isCustom: false,
+        },
+        {
+          name: 'Hidden Agent',
+          globalPath: '/tmp/hidden',
+          projectPath: '.hidden/skills',
+          enabled: false,
+          isCustom: true,
+        },
+        {
+          name: 'Codex',
+          globalPath: '/tmp/codex',
+          projectPath: '.codex/skills',
+          enabled: true,
+          isCustom: false,
+        },
+      ],
+    }
+    const dataTransfer = {
+      setData: vi.fn(),
+      getData: vi.fn(() => 'Codex'),
+      effectAllowed: 'move',
+      dropEffect: 'move',
+    }
+
+    render(<Sidebar config={config} />)
+
+    fireEvent.dragStart(screen.getByTestId(`sidebar-agent-${encodeURIComponent('Codex')}`), {
+      dataTransfer,
+    })
+    fireEvent.dragOver(screen.getByTestId(`sidebar-agent-${encodeURIComponent('Antigravity')}`), {
+      dataTransfer,
+    })
+    fireEvent.drop(screen.getByTestId(`sidebar-agent-${encodeURIComponent('Antigravity')}`), {
+      dataTransfer,
+    })
+
+    await waitFor(() =>
+      expect(actionMocks.actionReorderAgents).toHaveBeenCalledWith([
+        'Codex',
+        'Antigravity',
+        'Cursor',
+      ])
     )
   })
 })

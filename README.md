@@ -4,6 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
+  <img src="https://github.com/PotatoDog1669/skills-hub/actions/workflows/ci.yml/badge.svg" alt="CI">
   <img src="https://img.shields.io/badge/Tauri-2.x-24C8D8" alt="Tauri">
   <img src="https://img.shields.io/badge/TypeScript-5.0-blue" alt="TypeScript">
   <img src="https://img.shields.io/badge/status-active-success" alt="Status">
@@ -138,6 +139,8 @@ Output directory:
 | `skills-hub kit loadout-*`                | Manage skill packages (`loadout-list/add/update/delete`)                        |
 | `skills-hub kit add/update/delete/apply`  | Compose Kit and apply it to target project + agent                              |
 
+Note: `skills-hub kit ...` stays local and does not auto-install official presets. Use `skills-hub official install --id <presetId>` when you explicitly want to install curated official content.
+
 ### Import/List/Remove Quick Examples
 
 ```bash
@@ -177,6 +180,15 @@ npm ci
 npm run tauri:dev
 ```
 
+Quality checks:
+
+```bash
+npm run lint
+npm run typecheck
+npm run test -- --run
+npm run build
+```
+
 For maintainers, a reusable release notes template is available at:
 - `docs/release-notes-template.md`
 - `docs/homebrew-tap-setup.md`
@@ -186,6 +198,8 @@ For maintainers, a reusable release notes template is available at:
 We welcome contributions! Please see our [CONTRIBUTING.md](docs/CONTRIBUTING.md) for details on how to get started.
 
 Please adhere to our [Code of Conduct](docs/CODE_OF_CONDUCT.md) in all interactions.
+
+Please report vulnerabilities privately according to [SECURITY.md](SECURITY.md).
 
 ## License
 

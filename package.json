@@ -17,7 +17,13 @@
     "type": "git",
     "url": "https://github.com/PotatoDog1669/skills-hub.git"
   },
+  "bugs": {
+    "url": "https://github.com/PotatoDog1669/skills-hub/issues"
+  },
   "homepage": "https://github.com/PotatoDog1669/skills-hub",
+  "engines": {
+    "node": ">=18"
+  },
   "publishConfig": {
     "access": "public"
   },
@@ -26,6 +32,7 @@
   },
   "files": [
     "bin/skills-hub",
+    "data/official-presets",
     "lib/core/provider-core.mjs",
     "lib/core/provider-core.d.ts",
     "lib/core/kit-core.mjs",
@@ -35,6 +42,7 @@
     "lib/services/provider-service.d.ts",
     "lib/services/kit-service.mjs",
     "lib/services/kit-service.d.ts",
+    "lib/services/kit-loadout-import.mjs",
     "README.md",
     "LICENSE"
   ],

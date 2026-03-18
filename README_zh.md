@@ -4,6 +4,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
+  <img src="https://github.com/PotatoDog1669/skills-hub/actions/workflows/ci.yml/badge.svg" alt="CI">
   <img src="https://img.shields.io/badge/Tauri-2.x-24C8D8" alt="Tauri">
   <img src="https://img.shields.io/badge/TypeScript-5.0-blue" alt="TypeScript">
   <img src="https://img.shields.io/badge/status-active-success" alt="Status">
@@ -140,6 +141,8 @@ npm run tauri:build
 | `skills-hub kit loadout-*`                | 管理技能包（`loadout-list/add/update/delete`）                         |
 | `skills-hub kit add/update/delete/apply`  | 组合 Kit 并应用到目标项目 + Agent                                      |
 
+说明：`skills-hub kit ...` 只处理本地 kit 数据，不会自动安装官方 preset。只有在你显式执行 `skills-hub official install --id <presetId>` 时，才会安装官方精选内容。
+
 ### import/list/remove 快速示例
 
 ```bash
@@ -179,6 +182,15 @@ npm ci
 npm run tauri:dev
 ```
 
+质量检查：
+
+```bash
+npm run lint
+npm run typecheck
+npm run test -- --run
+npm run build
+```
+
 维护者可复用的 release notes 模板见：
 - `docs/release-notes-template.md`
 - `docs/homebrew-tap-setup.md`
@@ -188,6 +200,8 @@ npm run tauri:dev
 我们欢迎社区贡献！请查看 [CONTRIBUTING.md](docs/CONTRIBUTING.md) 了解如何开始。
 
 所有互动请遵守我们的 [行为准则](docs/CODE_OF_CONDUCT.md)。
+
+如发现安全问题，请按照 [SECURITY.md](SECURITY.md) 私下报告，不要公开提交 issue。
 
 ## 许可证
 

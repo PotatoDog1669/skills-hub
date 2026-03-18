@@ -39,6 +39,7 @@ export type ResolveAgentsFromGithubResult = {
 }
 
 const GITHUB_API_BASE = 'https://api.github.com'
+const POLICY_MARKDOWN_BASENAMES = ['agents.md', 'claude.md', 'agent.md']
 
 function decodePathSegment(input: string): string {
   try {
@@ -76,13 +77,13 @@ function dirname(input: string): string {
   return normalized.slice(0, index)
 }
 
-function isAgentsMarkdownPath(input: string): boolean {
-  return getBasename(input).toLowerCase() === 'agents.md'
+function isPolicyMarkdownPath(input: string): boolean {
+  return POLICY_MARKDOWN_BASENAMES.includes(getBasename(input).toLowerCase())
 }
 
 function sanitizeSuggestedName(input: string): string {
   const value = String(input || '').trim()
-  if (!value) return 'Imported AGENTS.md'
+  if (!value) return 'Imported Instructions'
   return value.replace(/\s+/g, ' ')
 }
 
@@ -291,11 +292,15 @@ async function fetchGithubFileContent(
 
 function selectBestAgentsPath(paths: string[]): string {
   const sorted = [...paths].sort((left, right) => {
-    const leftLower = left.toLowerCase()
-    const rightLower = right.toLowerCase()
+    const leftLower = getBasename(left).toLowerCase()
+    const rightLower = getBasename(right).toLowerCase()
 
-    if (leftLower === 'agents.md' && rightLower !== 'agents.md') return -1
-    if (rightLower === 'agents.md' && leftLower !== 'agents.md') return 1
+    const leftRank = POLICY_MARKDOWN_BASENAMES.indexOf(leftLower)
+    const rightRank = POLICY_MARKDOWN_BASENAMES.indexOf(rightLower)
+    if (leftRank !== rightRank) {
+      return (leftRank < 0 ? POLICY_MARKDOWN_BASENAMES.length : leftRank) -
+        (rightRank < 0 ? POLICY_MARKDOWN_BASENAMES.length : rightRank)
+    }
 
     const leftDepth = left.split('/').length
     const rightDepth = right.split('/').length
@@ -318,16 +323,16 @@ async function searchAgentsPath(
   )
 
   if (tree.truncated) {
-    throw new Error('仓库文件过多，GitHub API 返回被截断，无法可靠定位 AGENTS.md。')
+    throw new Error('仓库文件过多，GitHub API 返回被截断，无法可靠定位指令文件。')
   }
 
   const allCandidates = (tree.tree || [])
-    .filter((entry) => entry?.type === 'blob' && isAgentsMarkdownPath(entry?.path || ''))
+    .filter((entry) => entry?.type === 'blob' && isPolicyMarkdownPath(entry?.path || ''))
     .map((entry) => normalizePath(entry.path || ''))
     .filter(Boolean)
 
   if (allCandidates.length === 0) {
-    throw new Error('未在该仓库中找到 AGENTS.md。')
+    throw new Error('未在该仓库中找到 AGENTS.md、AGENT.md 或 CLAUDE.md。')
   }
 
   const prefix = normalizePath(searchPrefix || '')
@@ -351,16 +356,16 @@ async function searchAgentsPath(
 function buildSuggestedPolicyName(repo: string, filePath: string): string {
   const normalizedRepo = sanitizeSuggestedName(repo.replace(/[-_]+/g, ' '))
   const normalizedPath = normalizePath(filePath)
-  if (!normalizedPath || normalizedPath.toLowerCase() === 'agents.md') {
-    return sanitizeSuggestedName(`${normalizedRepo} AGENTS`)
+  if (!normalizedPath || POLICY_MARKDOWN_BASENAMES.includes(normalizedPath.toLowerCase())) {
+    return sanitizeSuggestedName(`${normalizedRepo} Instructions`)
   }
 
   const parent = dirname(normalizedPath).split('/').filter(Boolean).pop() || ''
   if (!parent) {
-    return sanitizeSuggestedName(`${normalizedRepo} AGENTS`)
+    return sanitizeSuggestedName(`${normalizedRepo} Instructions`)
   }
 
-  return sanitizeSuggestedName(`${normalizedRepo} ${parent} AGENTS`)
+  return sanitizeSuggestedName(`${normalizedRepo} ${parent} Instructions`)
 }
 
 function buildSourceUrl(result: { owner: string; repo: string; branch: string; filePath: string }): string {
@@ -380,7 +385,7 @@ export async function resolveAgentsFromGithub(
 
   let filePath = normalizePath(reference.filePath || '')
 
-  if (filePath && isAgentsMarkdownPath(filePath)) {
+  if (filePath && isPolicyMarkdownPath(filePath)) {
     const content = await fetchGithubFileContent(repo, branch, filePath)
     return {
       owner: repo.owner,

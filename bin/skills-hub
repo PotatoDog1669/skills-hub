@@ -13,7 +13,7 @@ const commandAliases = new Map([
     ['ls', 'list'],
     ['rm', 'remove'],
 ]);
-const commands = new Set(['import', 'list', 'ls', 'remove', 'rm', 'sync', 'provider', 'kit']);
+const commands = new Set(['import', 'list', 'ls', 'remove', 'rm', 'sync', 'provider', 'kit', 'official']);
 const flagsWithValues = new Set([
     '-b',
     '--branch',
@@ -38,12 +38,15 @@ const flagsWithValues = new Set([
     '--loadout-id',
     '--description',
     '--skills',
+    '--url',
     '--project',
     '--agent',
     '-a',
     '--mode',
     '--content',
     '--content-file',
+    '--with',
+    '--without',
 ]);
 let providerCorePromise = null;
 let kitServicePromise = null;
@@ -108,6 +111,11 @@ Commands:
   sync --all | --target <name>       Sync hub skills to agent targets
   provider <subcommand>              Manage provider profiles and switching
   kit <subcommand>                   Manage AGENTS templates, loadouts, and kits
+  official <subcommand>              Manage official preset catalog installs
+
+Behavior:
+  kit commands are local-only and do not auto-install official presets
+  official install ...               Explicitly installs official preset content
 
 Import options:
   -b, --branch <branch>              Use branch when importing from Git
@@ -150,12 +158,19 @@ Kit subcommands:
   kit loadout-list
   kit loadout-add --name <name> --skills <path1,path2,...> [--description <text>] [--mode copy|link]
   kit loadout-update --id <id> [--name <name>] [--description <text>] [--skills <path1,path2,...>] [--mode copy|link]
+  kit loadout-import --url <repoOrTreeUrl> [--name <packageName>] [--description <text>] [--yes]
   kit loadout-delete --id <id>
   kit list
-  kit add --name <name> --policy-id <id> --loadout-id <id> [--description <text>]
+  kit add --name <name> [--policy-id <id>] [--loadout-id <id>] [--description <text>]
   kit update --id <id> [--name <name>] [--policy-id <id>] [--loadout-id <id>] [--description <text>]
   kit delete --id <id>
-  kit apply --id <id> --project <path> --agent <name> [--mode copy|link] [--overwrite-agents-md]
+  kit apply --id <id> --project <path> --agent <name> [--mode copy|link] [--overwrite-agents-md] [--with <skill>] [--without <skill>]
+
+Official subcommands:
+  official list
+  official search <query>
+  official inspect --id <presetId>
+  official install --id <presetId> [--yes]
 
   -v, --version       Show version number
   -h, --help          Show this help message
@@ -181,6 +196,30 @@ function readArgValue(argv, flag, shortFlag) {
     }
 
     return null;
+}
+
+function readArgValues(argv, flag, shortFlag) {
+    const values = [];
+
+    for (let index = 0; index < argv.length; index += 1) {
+        const arg = argv[index];
+        if (arg === flag || (shortFlag && arg === shortFlag)) {
+            const next = argv[index + 1];
+            if (next && !next.startsWith('-')) {
+                values.push(next);
+            }
+            continue;
+        }
+
+        if (arg.startsWith(`${flag}=`)) {
+            values.push(arg.split('=').slice(1).join('='));
+        }
+    }
+
+    return values
+        .flatMap((value) => String(value || '').split(','))
+        .map((value) => value.trim())
+        .filter(Boolean);
 }
 
 function expandHome(inputPath) {
@@ -289,6 +328,9 @@ async function runCommand(commandName, commandArgs) {
             return;
         case 'kit':
             await handleKit(commandArgs);
+            return;
+        case 'official':
+            await handleOfficial(commandArgs);
             return;
         default:
             console.error(`Unknown command: ${commandName}`);
@@ -706,11 +748,19 @@ function printKitPolicyRow(policy) {
 }
 
 function printKitLoadoutRow(loadout) {
-    console.log(`- ${loadout.id} | ${loadout.name} | skills=${loadout.items.length}`);
+    const importLabel = loadout.importSource ? ` | imported=${loadout.importSource.repoWebUrl}` : '';
+    console.log(`- ${loadout.id} | ${loadout.name} | skills=${loadout.items.length}${importLabel}`);
 }
 
 function printKitRow(kit) {
     console.log(`- ${kit.id} | ${kit.name} | policy=${kit.policyId} | loadout=${kit.loadoutId}`);
+}
+
+function printOfficialPresetRow(preset) {
+    console.log(
+        `- ${preset.id} | ${preset.name} | policy=${preset.policyName} | ` +
+        `skills=${preset.skillCount} | sources=${preset.sourceCount}`
+    );
 }
 
 async function handleKit(commandArgs) {
@@ -841,6 +891,34 @@ async function handleKit(commandArgs) {
             console.log(`Loadout updated: ${loadout.id} (${loadout.name})`);
             return;
         }
+        case 'loadout-import': {
+            const rest = commandArgs.slice(1);
+            const url = readArgValue(rest, '--url');
+            const name = readArgValue(rest, '--name');
+            const description = readArgValue(rest, '--description');
+            const overwrite = hasFlag(rest, '--yes') || hasFlag(rest, '-y');
+
+            if (!url) {
+                throw new Error('kit loadout-import requires --url');
+            }
+
+            const result = await service.importKitLoadoutFromRepo({
+                url,
+                name: name || undefined,
+                description: description || undefined,
+                overwrite,
+            });
+
+            console.log(`Remote source: ${result.source.repoWebUrl}`);
+            console.log(`Root subdir: ${result.source.rootSubdir}`);
+            console.log(`Resolved branch: ${result.source.branch || 'unknown'}`);
+            console.log(
+                `Imported skills: discovered=${result.discoveredCount}, overwritten=${result.overwrittenCount}, removed=${result.removedCount}`
+            );
+            const loadoutLabel = result.loadoutStatus === 'updated' ? 'Loadout updated' : 'Loadout created';
+            console.log(`${loadoutLabel}: ${result.loadout.id} (${result.loadout.name})`);
+            return;
+        }
         case 'loadout-delete': {
             const rest = commandArgs.slice(1);
             const id = readArgValue(rest, '--id');
@@ -867,15 +945,18 @@ async function handleKit(commandArgs) {
             const policyId = readArgValue(rest, '--policy-id');
             const loadoutId = readArgValue(rest, '--loadout-id');
 
-            if (!name || !policyId || !loadoutId) {
-                throw new Error('kit add requires --name --policy-id --loadout-id');
+            if (!name) {
+                throw new Error('kit add requires --name');
+            }
+            if (!policyId && !loadoutId) {
+                throw new Error('kit add requires at least one of --policy-id / --loadout-id');
             }
 
             const kit = service.addKit({
                 name,
                 description: description || undefined,
-                policyId,
-                loadoutId,
+                policyId: policyId || undefined,
+                loadoutId: loadoutId || undefined,
             });
             console.log(`Kit created: ${kit.id} (${kit.name})`);
             return;
@@ -919,6 +1000,8 @@ async function handleKit(commandArgs) {
             const agentName = readArgValue(rest, '--agent');
             const mode = normalizeKitMode(readArgValue(rest, '--mode'));
             const overwriteAgentsMd = hasFlag(rest, '--overwrite-agents-md');
+            const includeSkills = readArgValues(rest, '--with');
+            const excludeSkills = readArgValues(rest, '--without');
 
             if (!kitId || !projectPath || !agentName) {
                 throw new Error('kit apply requires --id --project --agent');
@@ -930,17 +1013,111 @@ async function handleKit(commandArgs) {
                 agentName,
                 mode,
                 overwriteAgentsMd,
+                includeSkills,
+                excludeSkills,
             });
 
             const successCount = result.loadoutResults.filter((item) => item.status === 'success').length;
+            const policySummary = result.policyPath ? `, policy=${result.policyPath}` : '';
             console.log(
                 `Kit applied: ${result.kitId} -> ${result.projectPath} (${result.agentName}), ` +
-                `skills=${successCount}, policy=${result.policyPath}`
+                `skills=${successCount}${policySummary}`
             );
             return;
         }
         default:
             throw new Error(`Unknown kit subcommand: ${subcommand}`);
+    }
+}
+
+async function handleOfficial(commandArgs) {
+    const subcommand = commandArgs[0];
+    if (!subcommand) {
+        throw new Error('Missing official subcommand. Try: official list|install');
+    }
+
+    const service = await loadKitService();
+
+    switch (subcommand) {
+        case 'list': {
+            const presets = await service.listOfficialPresets();
+            if (presets.length === 0) {
+                console.log('No official presets found.');
+                return;
+            }
+            presets.forEach(printOfficialPresetRow);
+            return;
+        }
+        case 'search': {
+            const query = commandArgs.slice(1).join(' ').trim();
+            const presets = await service.searchOfficialPresets({
+                query,
+            });
+            if (presets.length === 0) {
+                console.log('No official presets matched.');
+                return;
+            }
+            presets.forEach(printOfficialPresetRow);
+            return;
+        }
+        case 'inspect': {
+            const rest = commandArgs.slice(1);
+            const id = readArgValue(rest, '--id');
+
+            if (!id) {
+                throw new Error('official inspect requires --id');
+            }
+
+            const preset = await service.getOfficialPreset({
+                id,
+            });
+
+            console.log(`${preset.id} | ${preset.name}`);
+            if (preset.description) {
+                console.log(preset.description);
+            }
+            console.log(`Policy: ${preset.policy.name}`);
+            if (preset.policy.description) {
+                console.log(`Policy description: ${preset.policy.description}`);
+            }
+            console.log(`Policy template: ${preset.policy.template}`);
+            console.log(`Total selected skills: ${preset.skillCount}`);
+            console.log('Sources:');
+            for (const source of preset.sources) {
+                console.log(`- ${source.id} | ${source.name}`);
+                console.log(`  url: ${source.url}`);
+                if (source.description) {
+                    console.log(`  description: ${source.description}`);
+                }
+                console.log(`  skills: ${source.selectedSkills.join(', ')}`);
+            }
+            return;
+        }
+        case 'install': {
+            const rest = commandArgs.slice(1);
+            const id = readArgValue(rest, '--id');
+            const overwrite = hasFlag(rest, '--yes') || hasFlag(rest, '-y');
+
+            if (!id) {
+                throw new Error('official install requires --id');
+            }
+
+            const result = await service.installOfficialPreset({
+                id,
+                overwrite,
+            });
+
+            console.log(`Official preset installed: ${result.preset.id} (${result.preset.name})`);
+            console.log(`Policy: ${result.policy.id} (${result.policy.name})`);
+            console.log(`Loadout: ${result.loadout.id} (${result.loadout.name}) skills=${result.loadout.items.length}`);
+            console.log(`Kit: ${result.kit.id} (${result.kit.name})`);
+            console.log(
+                `Sources imported: ${result.importedSources.map((source) => `${source.name}:${source.selectedSkillCount}`).join(', ')}`
+            );
+            return;
+        }
+        default:
+            throw new Error(`Unknown official subcommand: ${subcommand}`);
     }
 }
 
@@ -1470,19 +1647,20 @@ const DEFAULT_AGENTS = [
     { name: 'Antigravity', globalPath: path.join(os.homedir(), '.gemini/antigravity/skills'), projectPath: '.agent/skills', enabled: true, isCustom: false },
     { name: 'Claude Code', globalPath: path.join(os.homedir(), '.claude/skills'), projectPath: '.claude/skills', enabled: true, isCustom: false },
     { name: 'Cursor', globalPath: path.join(os.homedir(), '.cursor/skills'), projectPath: '.cursor/skills', enabled: true, isCustom: false },
-    { name: 'OpenCode', globalPath: path.join(os.homedir(), '.config/opencode/skill'), projectPath: '.opencode/skill', enabled: false, isCustom: false },
+    { name: 'OpenClaw', globalPath: path.join(os.homedir(), '.openclaw/skills'), projectPath: 'skills', enabled: false, isCustom: false },
+    { name: 'CodeBuddy', globalPath: path.join(os.homedir(), '.codebuddy/skills'), projectPath: '.codebuddy/skills', enabled: false, isCustom: false },
+    { name: 'OpenCode', globalPath: path.join(os.homedir(), '.config/opencode/skills'), projectPath: '.agents/skills', enabled: false, isCustom: false },
     { name: 'Codex', globalPath: path.join(os.homedir(), '.codex/skills'), projectPath: '.codex/skills', enabled: false, isCustom: false },
-    { name: 'Amp', globalPath: path.join(os.homedir(), '.config/agents/skills'), projectPath: '.agents/skills', enabled: false, isCustom: false },
+    { name: 'Kimi Code CLI', globalPath: path.join(os.homedir(), '.config/agents/skills'), projectPath: '.agents/skills', enabled: false, isCustom: false },
     { name: 'Kilo Code', globalPath: path.join(os.homedir(), '.kilocode/skills'), projectPath: '.kilocode/skills', enabled: false, isCustom: false },
-    { name: 'Roo Code', globalPath: path.join(os.homedir(), '.roo/skills'), projectPath: '.roo/skills', enabled: false, isCustom: false },
-    { name: 'Goose', globalPath: path.join(os.homedir(), '.config/goose/skills'), projectPath: '.goose/skills', enabled: false, isCustom: false },
+    { name: 'Kiro CLI', globalPath: path.join(os.homedir(), '.kiro/skills'), projectPath: '.kiro/skills', enabled: false, isCustom: false },
     { name: 'Gemini CLI', globalPath: path.join(os.homedir(), '.gemini/skills'), projectPath: '.gemini/skills', enabled: false, isCustom: false },
     { name: 'GitHub Copilot', globalPath: path.join(os.homedir(), '.copilot/skills'), projectPath: '.github/skills', enabled: false, isCustom: false },
-    { name: 'Clawdbot', globalPath: path.join(os.homedir(), '.clawdbot/skills'), projectPath: 'skills', enabled: false, isCustom: false },
-    { name: 'Droid', globalPath: path.join(os.homedir(), '.factory/skills'), projectPath: '.factory/skills', enabled: false, isCustom: false },
     { name: 'Windsurf', globalPath: path.join(os.homedir(), '.codeium/windsurf/skills'), projectPath: '.windsurf/skills', enabled: false, isCustom: false },
     { name: 'Trae', globalPath: path.join(os.homedir(), '.trae/skills'), projectPath: '.trae/skills', enabled: false, isCustom: false },
+    { name: 'Trae CN', globalPath: path.join(os.homedir(), '.trae-cn/skills'), projectPath: '.trae/skills', enabled: false, isCustom: false },
     { name: 'Qoder', globalPath: path.join(os.homedir(), '.qoder/skills'), projectPath: '.qoder/skills', enabled: false, isCustom: false },
+    { name: 'Qwen Code', globalPath: path.join(os.homedir(), '.qwen/skills'), projectPath: '.qwen/skills', enabled: false, isCustom: false },
 ];
 
 const DEFAULT_CONFIG = {

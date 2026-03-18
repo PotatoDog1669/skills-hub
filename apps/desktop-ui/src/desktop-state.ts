@@ -1,4 +1,10 @@
-import type { KitLoadoutRecord, KitPolicyRecord, KitRecord } from '@/lib/core/kit-types';
+import type {
+  KitLoadoutRecord,
+  KitPolicyRecord,
+  KitRecord,
+  OfficialPresetDetail,
+  OfficialPresetSummary,
+} from '@/lib/core/kit-types';
 import type {
   AppType,
   ProviderRecord,
@@ -29,6 +35,8 @@ export type DesktopState = {
   kitPolicies: KitPolicyRecord[];
   kitLoadouts: KitLoadoutRecord[];
   kits: KitRecord[];
+  officialPresets: OfficialPresetSummary[];
+  officialPresetDetails: Record<string, OfficialPresetDetail>;
   providerBackups: Record<AppType, ProviderBackupEntry[]>;
   skillDocuments: Record<string, SkillDocument>;
   agentsMdApplied: Record<string, boolean>;
@@ -42,6 +50,7 @@ export type DashboardSnapshot = {
   kitPolicies: KitPolicyRecord[];
   kitLoadouts: KitLoadoutRecord[];
   kits: KitRecord[];
+  officialPresets: OfficialPresetSummary[];
 };
 
 const BUILTIN_AGENTS: AgentConfig[] = [
@@ -49,6 +58,7 @@ const BUILTIN_AGENTS: AgentConfig[] = [
     name: 'Antigravity',
     globalPath: '/Users/leo/.gemini/antigravity/skills',
     projectPath: '.agent/skills',
+    instructionFileName: 'AGENTS.md',
     enabled: true,
     isCustom: false,
   },
@@ -56,6 +66,7 @@ const BUILTIN_AGENTS: AgentConfig[] = [
     name: 'Claude Code',
     globalPath: '/Users/leo/.claude/skills',
     projectPath: '.claude/skills',
+    instructionFileName: 'CLAUDE.md',
     enabled: true,
     isCustom: false,
   },
@@ -63,20 +74,119 @@ const BUILTIN_AGENTS: AgentConfig[] = [
     name: 'Cursor',
     globalPath: '/Users/leo/.cursor/skills',
     projectPath: '.cursor/skills',
+    instructionFileName: 'AGENTS.md',
     enabled: true,
+    isCustom: false,
+  },
+  {
+    name: 'OpenClaw',
+    globalPath: '/Users/leo/.openclaw/skills',
+    projectPath: 'skills',
+    instructionFileName: 'AGENTS.md',
+    enabled: false,
+    isCustom: false,
+  },
+  {
+    name: 'CodeBuddy',
+    globalPath: '/Users/leo/.codebuddy/skills',
+    projectPath: '.codebuddy/skills',
+    instructionFileName: 'AGENTS.md',
+    enabled: false,
+    isCustom: false,
+  },
+  {
+    name: 'OpenCode',
+    globalPath: '/Users/leo/.config/opencode/skills',
+    projectPath: '.agents/skills',
+    instructionFileName: 'AGENTS.md',
+    enabled: false,
     isCustom: false,
   },
   {
     name: 'Codex',
     globalPath: '/Users/leo/.codex/skills',
     projectPath: '.codex/skills',
+    instructionFileName: 'AGENTS.md',
     enabled: true,
+    isCustom: false,
+  },
+  {
+    name: 'Kimi Code CLI',
+    globalPath: '/Users/leo/.config/agents/skills',
+    projectPath: '.agents/skills',
+    instructionFileName: 'AGENTS.md',
+    enabled: false,
+    isCustom: false,
+  },
+  {
+    name: 'Kilo Code',
+    globalPath: '/Users/leo/.kilocode/skills',
+    projectPath: '.kilocode/skills',
+    instructionFileName: 'AGENTS.md',
+    enabled: false,
+    isCustom: false,
+  },
+  {
+    name: 'Kiro CLI',
+    globalPath: '/Users/leo/.kiro/skills',
+    projectPath: '.kiro/skills',
+    instructionFileName: 'AGENTS.md',
+    enabled: false,
     isCustom: false,
   },
   {
     name: 'Gemini CLI',
     globalPath: '/Users/leo/.gemini/skills',
     projectPath: '.gemini/skills',
+    instructionFileName: 'AGENTS.md',
+    enabled: false,
+    isCustom: false,
+  },
+  {
+    name: 'GitHub Copilot',
+    globalPath: '/Users/leo/.copilot/skills',
+    projectPath: '.github/skills',
+    instructionFileName: 'AGENTS.md',
+    enabled: false,
+    isCustom: false,
+  },
+  {
+    name: 'Windsurf',
+    globalPath: '/Users/leo/.codeium/windsurf/skills',
+    projectPath: '.windsurf/skills',
+    instructionFileName: 'AGENTS.md',
+    enabled: false,
+    isCustom: false,
+  },
+  {
+    name: 'Trae',
+    globalPath: '/Users/leo/.trae/skills',
+    projectPath: '.trae/skills',
+    instructionFileName: 'AGENTS.md',
+    enabled: false,
+    isCustom: false,
+  },
+  {
+    name: 'Trae CN',
+    globalPath: '/Users/leo/.trae-cn/skills',
+    projectPath: '.trae/skills',
+    instructionFileName: 'AGENTS.md',
+    enabled: false,
+    isCustom: false,
+  },
+  {
+    name: 'Qoder',
+    globalPath: '/Users/leo/.qoder/skills',
+    projectPath: '.qoder/skills',
+    instructionFileName: 'AGENTS.md',
+    enabled: false,
+    isCustom: false,
+  },
+  {
+    name: 'Qwen Code',
+    globalPath: '/Users/leo/.qwen/skills',
+    projectPath: '.qwen/skills',
+    instructionFileName: 'AGENTS.md',
     enabled: false,
     isCustom: false,
   },
@@ -222,6 +332,10 @@ function createSeedState(): DesktopState {
     },
   ];
 
+  const officialPresets: OfficialPresetSummary[] = [];
+
+  const officialPresetDetails: Record<string, OfficialPresetDetail> = {};
+
   return {
     config: {
       hubPath,
@@ -250,6 +364,8 @@ function createSeedState(): DesktopState {
     kitPolicies,
     kitLoadouts,
     kits,
+    officialPresets,
+    officialPresetDetails,
     providerBackups: {
       claude: [],
       codex: [],
@@ -302,6 +418,17 @@ function ensureState(): DesktopState {
   }
 
   const fromStorage = readFromStorage();
+  if (fromStorage) {
+    const seed = createSeedState();
+    fromStorage.officialPresets = Array.isArray(fromStorage.officialPresets)
+      ? fromStorage.officialPresets
+      : seed.officialPresets;
+    fromStorage.officialPresetDetails =
+      fromStorage.officialPresetDetails && typeof fromStorage.officialPresetDetails === 'object'
+        ? fromStorage.officialPresetDetails
+        : seed.officialPresetDetails;
+  }
+
   inMemoryState = fromStorage || createSeedState();
   if (!fromStorage) {
     saveToStorage(inMemoryState);
@@ -347,6 +474,7 @@ export function getSnapshot(): DashboardSnapshot {
     kitPolicies: clone(state.kitPolicies),
     kitLoadouts: clone(state.kitLoadouts),
     kits: clone(state.kits),
+    officialPresets: clone(state.officialPresets),
   };
 }
 

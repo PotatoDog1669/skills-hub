@@ -7,31 +7,38 @@ type Lang = 'en' | 'zh'
 
 const content = {
   en: {
-    title: 'Skills Hub Project Introduction',
-    lead: 'Current version focuses on a local-first workflow: manage Skills, Providers, and Kits across Git projects and multiple agents.',
-    overviewTitle: 'Current Status',
+    title: 'Skills Hub Introduction',
+    lead: 'Skills Hub is a local-first control center for skills, instruction templates, kits, and providers across Git projects and multiple AI agents.',
+    overviewTitle: 'Product Snapshot',
     overviewText:
-      'Skills Hub now has both Desktop UI and CLI entry points. Desktop is for visual operations, while CLI is for repeatable scripts and automation. Both paths share the same core capability set.',
-    capabilitiesTitle: 'Implemented Capabilities',
+      'The current version provides both Desktop UI and CLI. Desktop is optimized for visual management, while CLI covers repeatable scripting and automation. Both entry points share the same core data model and workflows.',
+    capabilitiesTitle: 'What You Can Do Today',
     capabilitiesText: (
       <ul>
         <li>
-          Manage skills in <strong>Central Hub</strong> as the single source of truth.
+          Use <strong>Central Hub</strong> as the source of truth for reusable skills.
         </li>
         <li>
-          Import skills from GitHub URLs, including branch-specific links.
+          Import skills from GitHub URLs, including tree and branch links.
         </li>
         <li>
-          Sync Hub skills to project agents with <code>copy</code> or <code>link</code> mode.
+          Sync skills to many supported agents such as Claude Code, Codex, Cursor, Gemini CLI,
+          Copilot, Windsurf, Trae, and more.
         </li>
         <li>
-          Save project-side skill changes back to Hub.
+          Publish Hub skills to target agents with <code>copy</code> or <code>link</code> mode,
+          then save project-side improvements back to Hub.
         </li>
         <li>
-          Build and apply Kits: AGENTS.md template + Skills package + target project/agent.
+          Build Kits from instruction templates and reusable loadouts, or import ready-made
+          loadouts from repositories.
         </li>
         <li>
-          Manage app-specific and universal Providers (switch, restore, re-apply).
+          Install official presets into managed Kits and re-sync or restore their baseline later.
+        </li>
+        <li>
+          Manage app-specific and universal Providers with switch, restore, capture, and re-apply
+          flows.
         </li>
       </ul>
     ),
@@ -39,26 +46,27 @@ const content = {
     hubTitle: '1. Skills Workflow (Hub ↔ Project)',
     hubText: (
       <>
-        Use Hub to import/create skills, then distribute them to projects. If a project copy is
-        improved, save it back to Hub to keep a canonical version.
+        Import or create skills in Hub first, then distribute them to projects and agents. If a
+        project copy evolves, save it back to Hub so the shared version stays current.
       </>
     ),
     projectsTitle: '2. Projects & Agents',
     projectsText:
-      'Project discovery is Git-only. Auto scan and manual add both require paths inside a Git work tree. You can manage skills per project and per enabled agent.',
+      'Project discovery is Git-only. Auto scan and manual add both require a Git work tree. Inside each project, you can manage enabled agents individually and keep different instruction files aligned.',
     kitTitle: '3. Kit Workflow (Template + Package + Apply)',
     kitText: (
       <>
-        In <strong>Kit</strong> view, AGENTS.md templates support drag import, GitHub import, and
-        manual editing. Skills package can be composed from Hub skills, then saved as Kit and
-        applied to a target project + agent in one action.
+        In <strong>Kit</strong>, instruction templates support drag import, GitHub import, and
+        manual editing for <code>AGENTS.md</code> or <code>CLAUDE.md</code>. Loadouts can be built
+        from Hub skills or imported from a repository, then combined into Kits and applied to a
+        target project + agent in one step.
       </>
     ),
     providerTitle: '4. Provider Workflow',
     providerText: (
       <>
-        In <strong>Providers</strong>, manage Claude/Codex/Gemini provider profiles and universal
-        provider configuration with backup-aware switch and re-apply flow.
+        In <strong>Providers</strong>, manage Claude, Codex, and Gemini profiles plus universal
+        provider configs with backup-aware switching, restore, capture, and re-apply support.
       </>
     ),
     guideTitle: 'Recommended Onboarding Order',
@@ -81,8 +89,8 @@ const content = {
     saveTitle: 'Step 4: Compose and Apply Kit',
     saveText: (
       <>
-        Create AGENTS.md template and Skills package, save them into a Kit, then apply the Kit to
-        the target project + agent.
+        Create or import an instruction template, assemble a loadout, or install an official
+        preset. Save the result as a Kit, then apply it to the target project + agent.
       </>
     ),
     createTitle: 'Step 5: Manage Providers',
@@ -98,14 +106,16 @@ const content = {
         <strong>Auto Scan:</strong> set Scan Roots in Settings (for example <code>~/workspace</code>
         ) to discover Git repositories recursively.
         <br />
-        <strong>Manual Add:</strong> add project path manually when needed (Git work tree required).
+        <strong>Manual Add:</strong> add a project path manually when needed, and enable the agents
+        you want to manage there.
       </>
     ),
     cliTitle: 'CLI Mapping',
     cliText: (
       <>
         Key groups: <code>skills-hub list/import/sync</code>, <code>provider ...</code>,{' '}
-        <code>kit policy-*</code>, <code>kit loadout-*</code>, <code>kit add/update/apply</code>.
+        <code>kit policy-*</code>, <code>kit loadout-*</code>, <code>kit add/update/apply</code>,
+        and <code>official list/install</code>.
       </>
     ),
     marketTitle: 'Skill Sources',
@@ -125,48 +135,55 @@ const content = {
     ),
   },
   zh: {
-    title: 'Skills Hub 项目介绍',
-    lead: '当前版本聚焦本地优先工作流：在 Git 项目与多 Agent 场景下统一管理 Skills、Providers 和 Kit。',
-    overviewTitle: '项目现状',
+    title: 'Skills Hub 使用简介',
+    lead: 'Skills Hub 是一个本地优先的控制中心，用来在 Git 项目与多 Agent 场景下统一管理 Skills、指令模板、Kit 和 Providers。',
+    overviewTitle: '当前定位',
     overviewText:
-      'Skills Hub 目前提供 Desktop UI + CLI 双入口。桌面端用于可视化操作，CLI 用于脚本化与自动化；两者共用同一套核心能力。',
-    capabilitiesTitle: '当前已实现能力',
+      '当前版本同时提供 Desktop UI 和 CLI。桌面端适合可视化管理，CLI 适合脚本化与自动化；两条路径共用同一套核心数据模型和工作流。',
+    capabilitiesTitle: '当前已落地能力',
     capabilitiesText: (
       <ul>
         <li>
-          在 <strong>Central Hub</strong> 集中管理技能，作为单一事实来源。
+          在 <strong>Central Hub</strong> 集中管理可复用技能，作为单一事实来源。
         </li>
-        <li>支持从 GitHub URL 导入技能（含分支链接）。</li>
         <li>
-          支持将 Hub 技能以 <code>copy</code> / <code>link</code> 同步到项目 Agent。
+          支持从 GitHub URL 导入技能，包含仓库树链接和分支链接。
         </li>
-        <li>支持把项目内技能改动保存回 Hub。</li>
-        <li>支持 Kit 组合与应用：AGENTS.md 模板 + Skills package + 目标项目/Agent。</li>
-        <li>支持应用级与通用 Provider 管理（切换、恢复、重新应用）。</li>
+        <li>
+          支持将技能同步到多种 Agent，包括 Claude Code、Codex、Cursor、Gemini CLI、Copilot、Windsurf、Trae 等。
+        </li>
+        <li>
+          支持将 Hub 技能以 <code>copy</code> / <code>link</code> 发布到目标 Agent，并把项目内改动回写到 Hub。
+        </li>
+        <li>
+          支持用指令模板和 skills 包组合 Kit，也支持直接从仓库导入 skills 包。
+        </li>
+        <li>支持导入官方 presets，生成受管理的推荐 Kit，并在后续重新同步或恢复基线。</li>
+        <li>支持应用级与通用 Provider 管理，包含切换、恢复、抓取当前配置和重新应用。</li>
       </ul>
     ),
     workflowsTitle: '核心流程',
     hubTitle: '1. 技能流程（Hub ↔ Project）',
     hubText: (
       <>
-        在 Hub 导入/创建技能后分发到项目。若项目侧能力增强，可保存回 Hub，持续维护标准版本。
+        先在 Hub 导入或创建技能，再分发到项目与 Agent。若项目侧版本持续演进，可以保存回 Hub，保持共享版本始终最新。
       </>
     ),
     projectsTitle: '2. 项目与 Agent',
     projectsText:
-      '项目发现是 Git-only：自动扫描和手动添加都要求路径在 Git 工作树内。你可以按项目、按已启用 Agent 进行独立管理。',
+      '项目发现目前仍是 Git-only：自动扫描和手动添加都要求路径位于 Git 工作树内。进入项目后，可以按已启用的 Agent 独立管理技能和指令文件。',
     kitTitle: '3. Kit 流程（模板 + 打包 + 应用）',
     kitText: (
       <>
-        在 <strong>Kit</strong> 视图中，AGENTS.md 模板支持拖拽导入、GitHub 导入和手动编辑。
-        Skills package 可从 Hub 技能中组合，保存为 Kit 后可一键应用到目标项目 + Agent。
+        在 <strong>Kit</strong> 视图中，指令模板支持拖拽导入、GitHub 导入和手动编辑，可用于
+        <code>AGENTS.md</code> 或 <code>CLAUDE.md</code>。skills 包既可以从 Hub 技能组合，也可以直接从仓库导入；随后可与模板组装成 Kit，并一键应用到目标项目和 Agent。
       </>
     ),
     providerTitle: '4. Provider 流程',
     providerText: (
       <>
-        在 <strong>Providers</strong> 视图中管理 Claude/Codex/Gemini 的 Provider，以及通用
-        Provider，支持带备份的切换与重新应用。
+        在 <strong>Providers</strong> 视图中管理 Claude、Codex、Gemini 的 Provider，以及通用
+        Provider，支持带备份的切换、恢复、抓取当前配置与重新应用。
       </>
     ),
     guideTitle: '推荐上手顺序',
@@ -188,7 +205,7 @@ const content = {
     saveTitle: '第 4 步：组合并应用 Kit',
     saveText: (
       <>
-        先创建 AGENTS.md 模板和 Skills package，再保存为 Kit，然后应用到目标项目 + Agent。
+        先创建或导入指令模板，再组装 skills 包，或者直接安装官方 preset。保存为 Kit 后，再应用到目标项目和 Agent。
       </>
     ),
     createTitle: '第 5 步：管理 Providers',
@@ -204,14 +221,15 @@ const content = {
         <strong>自动扫描：</strong>在设置中配置 Scan Roots（例如 <code>~/workspace</code>），系统将递归发现
         Git 仓库项目。
         <br />
-        <strong>手动添加：</strong>项目不在扫描根目录时可手动添加（仍要求 Git 工作树）。
+        <strong>手动添加：</strong>项目不在扫描根目录时可手动添加；添加后再启用你想管理的 Agent。
       </>
     ),
     cliTitle: 'CLI 对照',
     cliText: (
       <>
         常用命令组：<code>skills-hub list/import/sync</code>、<code>provider ...</code>、
-        <code>kit policy-*</code>、<code>kit loadout-*</code>、<code>kit add/update/apply</code>。
+        <code>kit policy-*</code>、<code>kit loadout-*</code>、<code>kit add/update/apply</code>、
+        <code>official list/install</code>。
       </>
     ),
     marketTitle: '技能来源',
