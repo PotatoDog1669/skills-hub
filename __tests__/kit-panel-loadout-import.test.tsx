@@ -144,14 +144,21 @@ const kits: KitRecord[] = [
 ]
 
 describe('KitPanel loadout import', () => {
+  const scrollIntoViewMock = vi.fn()
+
   beforeEach(() => {
     cleanup()
     refreshMock.mockReset()
     confirmMock.mockReset()
     promptMock.mockReset()
+    scrollIntoViewMock.mockReset()
     confirmMock.mockResolvedValue(true)
     promptMock.mockResolvedValue(null)
     Object.values(actionMocks).forEach((mockFn) => mockFn.mockReset())
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoViewMock,
+    })
   })
 
   it('opens repo import dialog and submits import action', async () => {
@@ -521,6 +528,107 @@ describe('KitPanel loadout import', () => {
     await waitFor(() => expect(actionMocks.actionKitDelete).toHaveBeenCalledWith('kit-a'))
   })
 
+  it('keeps the kit form in new mode after clicking 新建', async () => {
+    render(
+      <KitPanel
+        policies={policies}
+        loadouts={loadouts}
+        kits={kits}
+        officialPresets={officialPresets}
+        skills={hubSkills}
+        projects={[]}
+        agents={agents}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '新建' }))
+
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText(/Kit 名称/) as HTMLInputElement).value).toBe('')
+    })
+    expect(
+      (screen.getByPlaceholderText(/一句中文简介/) as HTMLTextAreaElement).value
+    ).toBe('')
+  })
+
+  it('blocks deleting a skills package that is still used by a kit', async () => {
+    render(
+      <KitPanel
+        policies={policies}
+        loadouts={loadouts}
+        kits={[
+          {
+            id: 'kit-web',
+            name: 'Web Frontend Excellence',
+            description: 'Uses the default package',
+            policyId: 'policy-a',
+            loadoutId: 'loadout-a',
+            createdAt: now,
+            updatedAt: now,
+          },
+        ]}
+        officialPresets={officialPresets}
+        skills={hubSkills}
+        projects={[]}
+        agents={agents}
+      />
+    )
+
+    const deleteButton = screen.getByRole('button', { name: '删除skills 包' })
+    fireEvent.click(deleteButton)
+
+    await waitFor(() =>
+      expect(confirmMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: '无法删除skills 包',
+          confirmText: '知道了',
+          cancelText: '关闭',
+          type: 'info',
+        })
+      )
+    )
+    expect(actionMocks.actionKitLoadoutDelete).not.toHaveBeenCalled()
+  })
+
+  it('blocks deleting an instruction template that is still used by a kit', async () => {
+    render(
+      <KitPanel
+        policies={policies}
+        loadouts={loadouts}
+        kits={[
+          {
+            id: 'kit-web',
+            name: 'Web Frontend Excellence',
+            description: 'Uses the default template',
+            policyId: 'policy-a',
+            loadoutId: 'loadout-a',
+            createdAt: now,
+            updatedAt: now,
+          },
+        ]}
+        officialPresets={officialPresets}
+        skills={hubSkills}
+        projects={[]}
+        agents={agents}
+      />
+    )
+
+    const deleteButton = screen.getByRole('button', { name: '删除Instruction 模板' })
+    fireEvent.click(deleteButton)
+
+    await waitFor(() =>
+      expect(confirmMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: '无法删除Instruction 模板',
+          confirmText: '知道了',
+          cancelText: '关闭',
+          type: 'info',
+        })
+      )
+    )
+    expect(actionMocks.actionKitPolicyDelete).not.toHaveBeenCalled()
+  })
+
   it('shows Claude-specific instruction filename in apply dialog and success message', async () => {
     const claudeAgents: AgentConfig[] = [
       {
@@ -654,6 +762,153 @@ describe('KitPanel loadout import', () => {
     view.unmount()
   })
 
+  it('confirms before resyncing a managed kit', async () => {
+    const officialPresetEntries: OfficialPresetSummary[] = [
+      {
+        id: 'nextjs-product-delivery',
+        name: 'Next.js Product Delivery',
+        description: 'demo',
+        policyName: 'Official: Next.js TS Strict',
+        sourceCount: 1,
+        skillCount: 2,
+      },
+    ]
+    const managedKits: KitRecord[] = [
+      {
+        ...kits[0],
+        id: 'kit-managed',
+        name: 'Official: Next.js Product Delivery',
+        managedSource: {
+          kind: 'official_preset',
+          presetId: 'nextjs-product-delivery',
+          presetName: 'Next.js Product Delivery',
+          catalogVersion: 2,
+          installedAt: now,
+          restoreCount: 0,
+          baseline: {
+            name: 'Official: Next.js Product Delivery',
+            description: 'demo',
+            policy: {
+              id: 'policy-a',
+              name: 'Official: Next.js TS Strict',
+              description: 'demo policy',
+              content: '# AGENTS.md\n',
+            },
+            loadout: {
+              id: 'loadout-a',
+              name: 'Official: Next.js Product Delivery',
+              description: 'demo',
+              items: loadouts[0].items,
+            },
+          },
+          securityChecks: [],
+        },
+      },
+    ]
+
+    actionMocks.actionOfficialPresetInstall.mockResolvedValue({
+      preset: officialPresetEntries[0],
+      policy: policies[0],
+      loadout: loadouts[0],
+      kit: managedKits[0],
+      importedSources: [],
+    })
+
+    render(
+      <KitPanel
+        policies={policies}
+        loadouts={loadouts}
+        kits={managedKits}
+        officialPresets={officialPresetEntries}
+        skills={hubSkills}
+        projects={['/tmp/project']}
+        agents={agents}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '重新同步' }))
+
+    await waitFor(() =>
+      expect(confirmMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: '重新同步 Kit',
+          confirmText: '重新同步',
+          cancelText: '取消',
+          type: 'info',
+        })
+      )
+    )
+    await waitFor(() =>
+      expect(actionMocks.actionOfficialPresetInstall).toHaveBeenCalledWith({
+        id: 'nextjs-product-delivery',
+        overwrite: true,
+      })
+    )
+  })
+
+  it('confirms before restoring a managed kit baseline', async () => {
+    const managedKit: KitRecord = {
+      ...kits[0],
+      id: 'kit-managed',
+      name: 'Official: Next.js Product Delivery',
+      managedSource: {
+        kind: 'official_preset',
+        presetId: 'nextjs-product-delivery',
+        presetName: 'Next.js Product Delivery',
+        catalogVersion: 2,
+        installedAt: now,
+        restoreCount: 0,
+        baseline: {
+          name: 'Official: Next.js Product Delivery',
+          description: 'demo',
+          policy: {
+            id: 'policy-a',
+            name: 'Official: Next.js TS Strict',
+            description: 'demo policy',
+            content: '# AGENTS.md\n',
+          },
+          loadout: {
+            id: 'loadout-a',
+            name: 'Official: Next.js Product Delivery',
+            description: 'demo',
+            items: loadouts[0].items,
+          },
+        },
+        securityChecks: [],
+      },
+    }
+
+    actionMocks.actionKitRestoreManagedBaseline.mockResolvedValue(managedKit)
+
+    render(
+      <KitPanel
+        policies={policies}
+        loadouts={loadouts}
+        kits={[managedKit]}
+        officialPresets={[]}
+        skills={hubSkills}
+        projects={['/tmp/project']}
+        agents={agents}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '恢复' }))
+
+    await waitFor(() =>
+      expect(confirmMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: '恢复 Kit',
+          confirmText: '恢复',
+          cancelText: '取消',
+          type: 'info',
+        })
+      )
+    )
+    await waitFor(() =>
+      expect(actionMocks.actionKitRestoreManagedBaseline).toHaveBeenCalledWith('kit-managed')
+    )
+  })
+
   it('switches the current template and package when selecting a kit', async () => {
     render(
       <KitPanel
@@ -701,6 +956,13 @@ describe('KitPanel loadout import', () => {
     fireEvent.click(screen.getByRole('button', { name: /Advanced Kit/ }))
 
     await waitFor(() => expect(screen.getByDisplayValue('Advanced Kit')).toBeTruthy())
+    await waitFor(() =>
+      expect(screen.getByTestId('policy-card-policy-b').className).toContain('border-[#e6b8a1]')
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('loadout-card-loadout-b').className).toContain('border-[#e6b8a1]')
+    )
+    expect(scrollIntoViewMock).toHaveBeenCalled()
 
     const currentCombination = screen.getByText('当前组合').closest('.rounded-lg')
     expect(currentCombination).toBeTruthy()

@@ -71,6 +71,24 @@ function stripDisplayPrefixes(value?: string | null): string {
     .trim()
 }
 
+function getReferencingKitNames(
+  kits: KitRecord[],
+  predicate: (kit: KitRecord) => boolean
+): string[] {
+  return kits
+    .filter(predicate)
+    .map((kit) => stripDisplayPrefixes(kit.name) || '未命名 Kit')
+}
+
+function formatDeleteBlockedDialogMessage(
+  label: string,
+  itemName: string,
+  kitNames: string[]
+): string {
+  const displayName = stripDisplayPrefixes(itemName) || `未命名${label}`
+  return `${label}「${displayName}」当前还不能删除。\n\n正在使用它的 Kit：${kitNames.join('、')}\n\n请先修改这些 Kit，或先删除相关 Kit。`
+}
+
 type DisplaySkill = {
   name: string
   path: string
@@ -278,6 +296,8 @@ export function KitPanel({
   const [isPolicyDragOver, setIsPolicyDragOver] = useState(false)
   const policyFileInputRef = useRef<HTMLInputElement | null>(null)
   const kitDescriptionRef = useRef<HTMLTextAreaElement | null>(null)
+  const policyCardRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const loadoutCardRefs = useRef<Record<string, HTMLDivElement | null>>({})
   const [loadoutImportUrl, setLoadoutImportUrl] = useState('')
   const [loadoutImportName, setLoadoutImportName] = useState('')
   const [loadoutImportDescription, setLoadoutImportDescription] = useState('')
@@ -300,6 +320,22 @@ export function KitPanel({
     const timer = window.setTimeout(() => setMessage(null), 2600)
     return () => window.clearTimeout(timer)
   }, [message])
+
+  useEffect(() => {
+    if (!selectedPolicyId) return
+    policyCardRefs.current[selectedPolicyId]?.scrollIntoView({
+      block: 'nearest',
+      inline: 'nearest',
+    })
+  }, [selectedPolicyId])
+
+  useEffect(() => {
+    if (!selectedLoadoutId) return
+    loadoutCardRefs.current[selectedLoadoutId]?.scrollIntoView({
+      block: 'nearest',
+      inline: 'nearest',
+    })
+  }, [selectedLoadoutId])
 
   useEffect(() => {
     const textarea = kitDescriptionRef.current
@@ -347,7 +383,10 @@ export function KitPanel({
   }, [visibleLoadouts, selectedLoadoutId, editingLoadoutId])
 
   useEffect(() => {
-    if (selectedKitId && kits.some((kit) => kit.id === selectedKitId)) {
+    if (!selectedKitId) {
+      return
+    }
+    if (kits.some((kit) => kit.id === selectedKitId)) {
       return
     }
     const fallback = kits[0]
@@ -650,7 +689,7 @@ export function KitPanel({
     })
   }
 
-  const deletePolicy = () => {
+  const deletePolicy = async () => {
     const targetId = editingPolicyId || selectedPolicyId
     const targetPolicy =
       policies.find((policy) => policy.id === targetId) ||
@@ -661,17 +700,33 @@ export function KitPanel({
       return
     }
 
+    const referencingKitNames = getReferencingKitNames(kits, (kit) => kit.policyId === targetId)
+    if (referencingKitNames.length > 0) {
+      await confirm({
+        title: `无法删除${POLICY_TEMPLATE_LABEL}`,
+        message: formatDeleteBlockedDialogMessage(
+          POLICY_TEMPLATE_LABEL,
+          targetPolicy?.name || '',
+          referencingKitNames
+        ),
+        type: 'info',
+        confirmText: '知道了',
+        cancelText: '关闭',
+      })
+      return
+    }
+
+    const confirmed = await confirm({
+      title: `删除${POLICY_TEMPLATE_LABEL}`,
+      message: `删除${POLICY_TEMPLATE_LABEL}「${stripDisplayPrefixes(targetPolicy?.name || '') || '未命名模板'}」？`,
+      type: 'danger',
+      confirmText: '删除',
+      cancelText: '取消',
+    })
+    if (!confirmed) return
+
     startTransition(async () => {
       try {
-        const confirmed = await confirm({
-          title: `删除${POLICY_TEMPLATE_LABEL}`,
-          message: `删除${POLICY_TEMPLATE_LABEL}「${stripDisplayPrefixes(targetPolicy?.name || '') || '未命名模板'}」？`,
-          type: 'danger',
-          confirmText: '删除',
-          cancelText: '取消',
-        })
-        if (!confirmed) return
-
         await actionKitPolicyDelete(targetId)
         setMessage({ type: 'success', text: `${POLICY_TEMPLATE_LABEL}已删除。` })
         resetPolicyDraft()
@@ -909,7 +964,7 @@ export function KitPanel({
     })
   }
 
-  const deleteLoadout = () => {
+  const deleteLoadout = async () => {
     const targetId = editingLoadoutId || selectedLoadoutId
     const targetLoadout =
       visibleLoadouts.find((loadout) => loadout.id === targetId) ||
@@ -920,17 +975,33 @@ export function KitPanel({
       return
     }
 
+    const referencingKitNames = getReferencingKitNames(kits, (kit) => kit.loadoutId === targetId)
+    if (referencingKitNames.length > 0) {
+      await confirm({
+        title: `无法删除${LOADOUT_LABEL}`,
+        message: formatDeleteBlockedDialogMessage(
+          LOADOUT_LABEL,
+          targetLoadout?.name || '',
+          referencingKitNames
+        ),
+        type: 'info',
+        confirmText: '知道了',
+        cancelText: '关闭',
+      })
+      return
+    }
+
+    const confirmed = await confirm({
+      title: `删除${LOADOUT_LABEL}`,
+      message: `删除${LOADOUT_LABEL}「${stripDisplayPrefixes(targetLoadout?.name || '') || '未命名 skills 包'}」？`,
+      type: 'danger',
+      confirmText: '删除',
+      cancelText: '取消',
+    })
+    if (!confirmed) return
+
     startTransition(async () => {
       try {
-        const confirmed = await confirm({
-          title: `删除${LOADOUT_LABEL}`,
-          message: `删除${LOADOUT_LABEL}「${stripDisplayPrefixes(targetLoadout?.name || '') || '未命名 skills 包'}」？`,
-          type: 'danger',
-          confirmText: '删除',
-          cancelText: '取消',
-        })
-        if (!confirmed) return
-
         await actionKitLoadoutDelete(targetId)
         setMessage({ type: 'success', text: `${LOADOUT_LABEL}已删除。` })
         resetLoadoutDraft()
@@ -1007,7 +1078,7 @@ export function KitPanel({
     })
   }
 
-  const deleteCurrentKit = () => {
+  const deleteCurrentKit = async () => {
     const targetId = editingKitId || selectedKitId
     const targetKit =
       kits.find((kit) => kit.id === targetId) ||
@@ -1018,17 +1089,17 @@ export function KitPanel({
       return
     }
 
+    const confirmed = await confirm({
+      title: '删除 Kit',
+      message: `删除 Kit「${stripDisplayPrefixes(targetKit?.name || '') || '未命名 Kit'}」？`,
+      type: 'danger',
+      confirmText: '删除',
+      cancelText: '取消',
+    })
+    if (!confirmed) return
+
     startTransition(async () => {
       try {
-        const confirmed = await confirm({
-          title: '删除 Kit',
-          message: `删除 Kit「${stripDisplayPrefixes(targetKit?.name || '') || '未命名 Kit'}」？`,
-          type: 'danger',
-          confirmText: '删除',
-          cancelText: '取消',
-        })
-        if (!confirmed) return
-
         await actionKitDelete(targetId)
         setMessage({ type: 'success', text: 'Kit 已删除。' })
         resetKitDraft()
@@ -1155,28 +1226,39 @@ export function KitPanel({
       return
     }
 
-    startTransition(async () => {
-      try {
-        const result = await actionOfficialPresetInstall({ id: presetId, overwrite: true })
-        setSelectedKitId(result.kit.id)
-        setEditingKitId(result.kit.id)
-        setKitName(stripDisplayPrefixes(result.kit.name))
-        setKitDescription(result.kit.description || '')
-        setSelectedPolicyId(result.kit.policyId || result.policy.id)
-        setSelectedLoadoutId(result.kit.loadoutId || result.loadout.id)
-        setSelectedLoadoutSkills(result.loadout.items.map((item) => item.skillPath))
-        setMessage({
-          type: 'success',
-          text: `已重新同步：${result.preset.name}`,
-        })
-        router.refresh()
-      } catch (error) {
-        setMessage({
-          type: 'error',
-          text: error instanceof Error ? error.message : `重新同步 Kit 失败：${String(error)}`,
-        })
-      }
-    })
+    void (async () => {
+      const confirmed = await confirm({
+        title: '重新同步 Kit',
+        message: `重新同步 Kit「${stripDisplayPrefixes(kit.name) || '未命名 Kit'}」？\n\n这会用推荐来源的最新内容覆盖当前受管理的 Kit。`,
+        type: 'info',
+        confirmText: '重新同步',
+        cancelText: '取消',
+      })
+      if (!confirmed) return
+
+      startTransition(async () => {
+        try {
+          const result = await actionOfficialPresetInstall({ id: presetId, overwrite: true })
+          setSelectedKitId(result.kit.id)
+          setEditingKitId(result.kit.id)
+          setKitName(stripDisplayPrefixes(result.kit.name))
+          setKitDescription(result.kit.description || '')
+          setSelectedPolicyId(result.kit.policyId || result.policy.id)
+          setSelectedLoadoutId(result.kit.loadoutId || result.loadout.id)
+          setSelectedLoadoutSkills(result.loadout.items.map((item) => item.skillPath))
+          setMessage({
+            type: 'success',
+            text: `已重新同步：${result.preset.name}`,
+          })
+          router.refresh()
+        } catch (error) {
+          setMessage({
+            type: 'error',
+            text: error instanceof Error ? error.message : `重新同步 Kit 失败：${String(error)}`,
+          })
+        }
+      })
+    })()
   }
 
   const restoreSelectedManagedKit = () => {
@@ -1186,30 +1268,41 @@ export function KitPanel({
       return
     }
 
-    startTransition(async () => {
-      try {
-        const restored = await actionKitRestoreManagedBaseline(targetKit.id)
-        setSelectedKitId(restored.id)
-        setEditingKitId(restored.id)
-        setKitName(stripDisplayPrefixes(restored.name))
-        setKitDescription(restored.description || '')
-        setSelectedPolicyId(restored.policyId || '')
-        setSelectedLoadoutId(restored.loadoutId || '')
-        setSelectedLoadoutSkills(
-          targetKit.managedSource?.baseline.loadout.items.map((item) => item.skillPath) || []
-        )
-        setMessage({
-          type: 'success',
-          text: `已恢复到 ${targetKit.managedSource?.presetName} 的导入基线。`,
-        })
-        router.refresh()
-      } catch (error) {
-        setMessage({
-          type: 'error',
-          text: error instanceof Error ? error.message : `恢复 Kit 失败：${String(error)}`,
-        })
-      }
-    })
+    void (async () => {
+      const confirmed = await confirm({
+        title: '恢复 Kit',
+        message: `恢复 Kit「${stripDisplayPrefixes(targetKit.name) || '未命名 Kit'}」到导入基线？\n\n这会用 ${targetKit.managedSource?.presetName} 的基线内容覆盖当前受管理的 Kit。`,
+        type: 'info',
+        confirmText: '恢复',
+        cancelText: '取消',
+      })
+      if (!confirmed) return
+
+      startTransition(async () => {
+        try {
+          const restored = await actionKitRestoreManagedBaseline(targetKit.id)
+          setSelectedKitId(restored.id)
+          setEditingKitId(restored.id)
+          setKitName(stripDisplayPrefixes(restored.name))
+          setKitDescription(restored.description || '')
+          setSelectedPolicyId(restored.policyId || '')
+          setSelectedLoadoutId(restored.loadoutId || '')
+          setSelectedLoadoutSkills(
+            targetKit.managedSource?.baseline.loadout.items.map((item) => item.skillPath) || []
+          )
+          setMessage({
+            type: 'success',
+            text: `已恢复到 ${targetKit.managedSource?.presetName} 的导入基线。`,
+          })
+          router.refresh()
+        } catch (error) {
+          setMessage({
+            type: 'error',
+            text: error instanceof Error ? error.message : `恢复 Kit 失败：${String(error)}`,
+          })
+        }
+      })
+    })()
   }
 
   const handleAddProjectForApply = () => {
@@ -1287,6 +1380,9 @@ export function KitPanel({
                   {policies.map((policy) => (
                     <div
                       key={policy.id}
+                      ref={(node) => {
+                        policyCardRefs.current[policy.id] = node
+                      }}
                       data-testid={`policy-card-${policy.id}`}
                       className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm ${
                         selectedPolicyId === policy.id
@@ -1365,6 +1461,9 @@ export function KitPanel({
                   {visibleLoadouts.map((loadout) => (
                     <div
                       key={loadout.id}
+                      ref={(node) => {
+                        loadoutCardRefs.current[loadout.id] = node
+                      }}
                       data-testid={`loadout-card-${loadout.id}`}
                       className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm ${
                         selectedLoadoutId === loadout.id
