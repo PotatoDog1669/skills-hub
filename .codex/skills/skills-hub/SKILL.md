@@ -1,6 +1,6 @@
 ---
 name: skills-hub
-description: Use this skill when the user wants to discover, inspect, install, or apply Skills Hub official presets, kits, AGENTS.md policies, or skill packages for a project. It guides the agent to use the Skills Hub CLI to search official presets, inspect their policy and selected skills, install them as kit artifacts, and apply them with optional temporary skill overrides after user confirmation.
+description: Use this skill when the user wants to discover, inspect, install, or apply Skills Hub presets, kits, AGENTS.md policies, or skill packages for a project. It guides the agent to use the Skills Hub CLI to search presets, inspect their policy and selected skills, install them as kit artifacts, and apply them with optional temporary skill overrides after user confirmation.
 allowed-tools: Bash(skills-hub:*), Read, Grep, Glob
 ---
 
@@ -10,10 +10,10 @@ Use this skill as the Skills Hub orchestration and preset-selection entrypoint.
 
 ## Use This Skill When
 
-- The user wants help choosing a project setup from Skills Hub official presets.
+- The user wants help choosing a project setup from Skills Hub presets.
 - The user asks which AGENTS.md and skills package fit a project.
-- The user wants to browse or inspect official presets before installing.
-- The user wants to install an official preset as a policy/loadout/kit.
+- The user wants to browse or inspect presets before installing.
+- The user wants to install a preset as a policy/package/kit.
 - The user wants to apply a saved kit with temporary added or removed skills.
 
 ## Core Rule
@@ -31,32 +31,32 @@ First understand the user goal and the project context:
 - project path
 - language / framework
 - whether this is new feature work, backend work, research work, or release work
-- whether the user wants an official preset or a custom/manual kit
+- whether the user wants a preset or a custom/manual kit
 
 If the project context is ambiguous, inspect the repository before recommending a preset.
 
-### 2. Search Official Presets First
+### 2. Search Presets First
 
-For first-pass recommendations, use the official preset catalog before falling back to manual kit assembly.
+For first-pass recommendations, use the preset catalog before falling back to manual kit assembly.
 
 Start with:
 
 ```bash
-skills-hub official list
+skills-hub kit preset-list
 ```
 
 If you need to narrow candidates:
 
 ```bash
-skills-hub official search <query>
+skills-hub kit preset-search <query>
 ```
 
 Examples:
 
 ```bash
-skills-hub official search nextjs
-skills-hub official search node api
-skills-hub official search scientific literature
+skills-hub kit preset-search nextjs
+skills-hub kit preset-search node api
+skills-hub kit preset-search scientific literature
 ```
 
 ### 3. Inspect Candidate Presets
@@ -64,7 +64,7 @@ skills-hub official search scientific literature
 For any promising candidate, inspect it before recommending installation:
 
 ```bash
-skills-hub official inspect --id <preset-id>
+skills-hub kit preset-inspect --id <preset-id>
 ```
 
 Use the inspect output to explain:
@@ -86,18 +86,18 @@ Before installing anything, present a short recommendation to the user:
 
 Do not install or apply until the user confirms.
 
-### 5. Install the Official Preset
+### 5. Install the Preset
 
 After confirmation:
 
 ```bash
-skills-hub official install --id <preset-id>
+skills-hub kit preset-install --id <preset-id>
 ```
 
 This creates:
 
-- an official policy
-- a curated loadout
+- a preset-backed policy
+- a preset-backed package
 - a kit
 
 ### 6. Review Installed Kits If Needed
@@ -107,7 +107,7 @@ After installation, you can inspect saved kit state with:
 ```bash
 skills-hub kit list
 skills-hub kit policy-list
-skills-hub kit loadout-list
+skills-hub kit package-list
 ```
 
 Use these when the user wants to confirm what was created, or when multiple kits already exist.
@@ -134,15 +134,15 @@ Notes:
 
 ### 8. Fall Back to Manual Kit Workflows Only When Needed
 
-If no official preset fits, fall back to manual kit composition:
+If no preset fits, fall back to manual kit composition:
 
 ```bash
 skills-hub kit policy-list
-skills-hub kit loadout-list
+skills-hub kit package-list
 skills-hub kit list
 ```
 
-Then guide the user toward manual policy/loadout/kit creation or editing.
+Then guide the user toward manual policy/package/kit creation or editing.
 
 ## Recommendation Output Format
 
@@ -171,13 +171,13 @@ If you want, I can install this preset and then apply it to <project> for <agent
 
 ## Produces
 
-- an inspected official preset recommendation
-- optionally, a newly installed official policy/loadout/kit
+- an inspected preset recommendation
+- optionally, a newly installed preset-backed policy/package/kit
 - optionally, an applied kit for a selected project and agent
 
 ## Guardrails
 
-- Do not claim a preset exists unless `skills-hub official list/search` shows it.
-- Do not claim a skill is included unless `skills-hub official inspect` shows it.
+- Do not claim a preset exists unless `skills-hub kit preset-list/search` shows it.
+- Do not claim a skill is included unless `skills-hub kit preset-inspect` shows it.
 - Do not apply a kit without user confirmation.
 - If no official preset fits, say so directly and switch to manual kit guidance.

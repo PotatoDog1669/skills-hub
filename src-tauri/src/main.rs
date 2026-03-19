@@ -16,8 +16,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager, State};
 
 const TRAY_ICON_ID: &str = "skills-hub-tray";
+const TRAY_MENU_SWITCH_PROVIDER: &str = "tray-switch-provider";
 const TRAY_MENU_OPEN: &str = "tray-open-main";
 const TRAY_MENU_QUIT: &str = "tray-quit-app";
+const TRAY_MENU_PROVIDER_SWITCH_PREFIX: &str = "tray-provider-switch::";
+const TRAY_MENU_PROVIDER_EMPTY_PREFIX: &str = "tray-provider-empty::";
 static APP_IS_EXITING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -43,6 +46,14 @@ impl AppType {
       Self::Claude => "claude",
       Self::Codex => "codex",
       Self::Gemini => "gemini",
+    }
+  }
+
+  fn label(&self) -> &'static str {
+    match self {
+      Self::Claude => "Claude",
+      Self::Codex => "Codex",
+      Self::Gemini => "Gemini",
     }
   }
 }
@@ -3889,6 +3900,7 @@ fn provider_get_raw(state: State<SharedState>, id: String) -> Result<ProviderRec
 
 #[tauri::command]
 fn provider_add(
+  app: tauri::AppHandle,
   state: State<SharedState>,
   appType: String,
   name: String,
@@ -3922,11 +3934,14 @@ fn provider_add(
 
   state_guard.providers.push(provider.clone());
   state.persist(&state_guard)?;
+  drop(state_guard);
+  let _ = refresh_tray_menu(&app);
   Ok(provider)
 }
 
 #[tauri::command]
 fn provider_update(
+  app: tauri::AppHandle,
   state: State<SharedState>,
   id: String,
   name: Option<String>,
@@ -3968,11 +3983,17 @@ fn provider_update(
   state_guard.providers[provider_index] = updated.clone();
 
   state.persist(&state_guard)?;
+  drop(state_guard);
+  let _ = refresh_tray_menu(&app);
   Ok(updated)
 }
 
 #[tauri::command]
-fn provider_delete(state: State<SharedState>, id: String) -> Result<bool, String> {
+fn provider_delete(
+  app: tauri::AppHandle,
+  state: State<SharedState>,
+  id: String,
+) -> Result<bool, String> {
   let mut state_guard = state
     .state
     .lock()
@@ -4004,88 +4025,22 @@ fn provider_delete(state: State<SharedState>, id: String) -> Result<bool, String
   }
 
   state.persist(&state_guard)?;
+  drop(state_guard);
+  let _ = refresh_tray_menu(&app);
   Ok(true)
 }
 
 #[tauri::command]
 fn provider_switch(
+  app: tauri::AppHandle,
   state: State<SharedState>,
   appType: String,
   providerId: String,
 ) -> Result<SwitchResult, String> {
   let app_type = AppType::parse(&appType)?;
-  let backup_id = now_millis();
-  let mut state_guard = state
-    .state
-    .lock()
-    .map_err(|_| "state lock poisoned".to_string())?;
-
-  let target = state_guard
-    .providers
-    .iter()
-    .find(|provider| provider.app_type == app_type && provider.id == providerId)
-    .cloned()
-    .ok_or_else(|| "Target provider does not exist for this app.".to_string())?;
-
-  let current = state_guard
-    .providers
-    .iter()
-    .find(|provider| provider.app_type == app_type && provider.is_current)
-    .cloned();
-  let switched_from = current.as_ref().map(|provider| provider.id.clone());
-
-  let live_before = read_live_provider_config(&app_type)?;
-  let current_snapshot = current.as_ref().and_then(|previous_current| {
-    if previous_current.id == target.id {
-      return None;
-    }
-
-    let updated_config = preserve_provider_profile(&live_before, &previous_current.config);
-    let mut backup_provider = previous_current.clone();
-    backup_provider.config = updated_config.clone();
-    backup_provider.is_current = false;
-    backup_provider.updated_at = now_millis();
-    Some((backup_provider, updated_config))
-  });
-
-  let next_config = merge_live_config(&app_type, &live_before, &target.config);
-  validate_provider_config_for_live(&app_type, &next_config)?;
-  write_live_provider_config(&app_type, &next_config)?;
-
-  let updated_at = now_millis();
-  if let Some((backup_provider, updated_config)) = current_snapshot {
-    if let Some(previous_entry) = state_guard
-      .providers
-      .iter_mut()
-      .find(|provider| provider.id == backup_provider.id)
-    {
-      previous_entry.config = updated_config;
-      previous_entry.updated_at = updated_at;
-    }
-
-    ensure_backups_for(&mut state_guard, &app_type).push(ProviderBackupEntry {
-      backup_id,
-      provider: backup_provider,
-    });
-  }
-
-  for provider in state_guard.providers.iter_mut() {
-    if provider.app_type != app_type {
-      continue;
-    }
-
-    provider.is_current = provider.id == providerId;
-    provider.updated_at = updated_at;
-  }
-
-  state.persist(&state_guard)?;
-  Ok(SwitchResult {
-    app_type,
-    current_provider_id: providerId.clone(),
-    backup_id,
-    switched_from,
-    switched_to: providerId,
-  })
+  let result = switch_provider_internal(&state, app_type, &providerId)?;
+  let _ = refresh_tray_menu(&app);
+  Ok(result)
 }
 
 #[tauri::command]
@@ -4108,6 +4063,7 @@ fn provider_latest_backup(
 
 #[tauri::command]
 fn provider_restore_latest_backup(
+  app: tauri::AppHandle,
   state: State<SharedState>,
   appType: String,
 ) -> Result<SwitchResult, String> {
@@ -4170,6 +4126,8 @@ fn provider_restore_latest_backup(
   };
 
   state.persist(&state_guard)?;
+  drop(state_guard);
+  let _ = refresh_tray_menu(&app);
   Ok(SwitchResult {
     app_type,
     current_provider_id: restored_id.clone(),
@@ -4181,6 +4139,7 @@ fn provider_restore_latest_backup(
 
 #[tauri::command]
 fn provider_capture_live(
+  app: tauri::AppHandle,
   state: State<SharedState>,
   appType: String,
   name: String,
@@ -4225,6 +4184,8 @@ fn provider_capture_live(
     .map_err(|_| "state lock poisoned".to_string())?;
   state_guard.providers.push(provider.clone());
   state.persist(&state_guard)?;
+  drop(state_guard);
+  let _ = refresh_tray_menu(&app);
   Ok(provider)
 }
 
@@ -4363,6 +4324,7 @@ fn universal_provider_delete(state: State<SharedState>, id: String) -> Result<bo
 
 #[tauri::command]
 fn universal_provider_apply(
+  app: tauri::AppHandle,
   state: State<SharedState>,
   id: String,
 ) -> Result<Vec<ProviderRecord>, String> {
@@ -4418,6 +4380,8 @@ fn universal_provider_apply(
   }
 
   state.persist(&state_guard)?;
+  drop(state_guard);
+  let _ = refresh_tray_menu(&app);
   Ok(applied)
 }
 
@@ -5699,14 +5663,221 @@ fn load_tray_icon_from_logo_white_svg() -> Option<tauri::image::Image<'static>> 
   ))
 }
 
-fn create_tray_icon<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
-  use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-  use tauri::tray::TrayIconBuilder;
+fn tray_provider_switch_menu_id(app_type: &AppType, provider_id: &str) -> String {
+  format!(
+    "{TRAY_MENU_PROVIDER_SWITCH_PREFIX}{}::{}",
+    app_type.as_str(),
+    provider_id
+  )
+}
 
+fn tray_provider_empty_menu_id(app_type: &AppType) -> String {
+  format!("{TRAY_MENU_PROVIDER_EMPTY_PREFIX}{}", app_type.as_str())
+}
+
+fn parse_tray_provider_switch_menu_id(raw: &str) -> Option<(AppType, String)> {
+  let payload = raw.strip_prefix(TRAY_MENU_PROVIDER_SWITCH_PREFIX)?;
+  let (app_raw, provider_id) = payload.split_once("::")?;
+  if provider_id.trim().is_empty() {
+    return None;
+  }
+
+  Some((AppType::parse(app_raw).ok()?, provider_id.to_string()))
+}
+
+fn tray_providers_for_app(providers: &[ProviderRecord], app_type: AppType) -> Vec<ProviderRecord> {
+  providers
+    .iter()
+    .filter(|provider| provider.app_type == app_type)
+    .cloned()
+    .collect()
+}
+
+fn build_tray_menu<R: tauri::Runtime>(
+  app: &tauri::AppHandle<R>,
+  providers: &[ProviderRecord],
+) -> tauri::Result<tauri::menu::Menu<R>> {
+  use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+
+  let app_submenus = [AppType::Codex, AppType::Claude, AppType::Gemini]
+    .into_iter()
+    .map(|app_type| {
+      let app_providers = tray_providers_for_app(providers, app_type.clone());
+
+      if app_providers.is_empty() {
+        let empty_item = MenuItem::with_id(
+          app,
+          tray_provider_empty_menu_id(&app_type),
+          "暂无已配置账号",
+          false,
+          None::<&str>,
+        )?;
+        return Submenu::with_id_and_items(
+          app,
+          format!("tray-provider-group::{}", app_type.as_str()),
+          app_type.label(),
+          true,
+          &[&empty_item],
+        );
+      }
+
+      let provider_items = app_providers
+        .iter()
+        .map(|provider| {
+          CheckMenuItem::with_id(
+            app,
+            tray_provider_switch_menu_id(&app_type, &provider.id),
+            &provider.name,
+            !provider.is_current,
+            provider.is_current,
+            None::<&str>,
+          )
+        })
+        .collect::<tauri::Result<Vec<_>>>()?;
+      let provider_item_refs = provider_items
+        .iter()
+        .map(|item| item as &dyn tauri::menu::IsMenuItem<R>)
+        .collect::<Vec<_>>();
+
+      Submenu::with_id_and_items(
+        app,
+        format!("tray-provider-group::{}", app_type.as_str()),
+        app_type.label(),
+        true,
+        &provider_item_refs,
+      )
+    })
+    .collect::<tauri::Result<Vec<_>>>()?;
+  let app_submenu_refs = app_submenus
+    .iter()
+    .map(|submenu| submenu as &dyn tauri::menu::IsMenuItem<R>)
+    .collect::<Vec<_>>();
+
+  let switch_provider_submenu = Submenu::with_id_and_items(
+    app,
+    TRAY_MENU_SWITCH_PROVIDER,
+    "快捷切换供应商",
+    true,
+    &app_submenu_refs,
+  )?;
   let open_item = MenuItem::with_id(app, TRAY_MENU_OPEN, "打开主界面", true, None::<&str>)?;
   let separator = PredefinedMenuItem::separator(app)?;
   let quit_item = MenuItem::with_id(app, TRAY_MENU_QUIT, "退出", true, None::<&str>)?;
-  let menu = Menu::with_items(app, &[&open_item, &separator, &quit_item])?;
+
+  Menu::with_items(
+    app,
+    &[&switch_provider_submenu, &separator, &open_item, &quit_item],
+  )
+}
+
+fn refresh_tray_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
+  let providers = {
+    let shared_state: State<SharedState> = app.state();
+    let state_guard = shared_state
+      .state
+      .lock()
+      .map_err(|_| "state lock poisoned".to_string())?;
+    state_guard.providers.clone()
+  };
+
+  let tray = app
+    .tray_by_id(TRAY_ICON_ID)
+    .ok_or_else(|| "tray icon not found".to_string())?;
+  let menu = build_tray_menu(app, &providers).map_err(|error| error.to_string())?;
+  tray.set_menu(Some(menu)).map_err(|error| error.to_string())?;
+  Ok(())
+}
+
+fn switch_provider_internal(
+  state: &SharedState,
+  app_type: AppType,
+  provider_id: &str,
+) -> Result<SwitchResult, String> {
+  let backup_id = now_millis();
+  let mut state_guard = state
+    .state
+    .lock()
+    .map_err(|_| "state lock poisoned".to_string())?;
+
+  let target = state_guard
+    .providers
+    .iter()
+    .find(|provider| provider.app_type == app_type && provider.id == provider_id)
+    .cloned()
+    .ok_or_else(|| "Target provider does not exist for this app.".to_string())?;
+
+  let current = state_guard
+    .providers
+    .iter()
+    .find(|provider| provider.app_type == app_type && provider.is_current)
+    .cloned();
+  let switched_from = current.as_ref().map(|provider| provider.id.clone());
+
+  let live_before = read_live_provider_config(&app_type)?;
+  let current_snapshot = current.as_ref().and_then(|previous_current| {
+    if previous_current.id == target.id {
+      return None;
+    }
+
+    let updated_config = preserve_provider_profile(&live_before, &previous_current.config);
+    let mut backup_provider = previous_current.clone();
+    backup_provider.config = updated_config.clone();
+    backup_provider.is_current = false;
+    backup_provider.updated_at = now_millis();
+    Some((backup_provider, updated_config))
+  });
+
+  let next_config = merge_live_config(&app_type, &live_before, &target.config);
+  validate_provider_config_for_live(&app_type, &next_config)?;
+  write_live_provider_config(&app_type, &next_config)?;
+
+  let updated_at = now_millis();
+  if let Some((backup_provider, updated_config)) = current_snapshot {
+    if let Some(previous_entry) = state_guard
+      .providers
+      .iter_mut()
+      .find(|provider| provider.id == backup_provider.id)
+    {
+      previous_entry.config = updated_config;
+      previous_entry.updated_at = updated_at;
+    }
+
+    ensure_backups_for(&mut state_guard, &app_type).push(ProviderBackupEntry {
+      backup_id,
+      provider: backup_provider,
+    });
+  }
+
+  for provider in state_guard.providers.iter_mut() {
+    if provider.app_type != app_type {
+      continue;
+    }
+
+    provider.is_current = provider.id == provider_id;
+    provider.updated_at = updated_at;
+  }
+
+  state.persist(&state_guard)?;
+  Ok(SwitchResult {
+    app_type,
+    current_provider_id: provider_id.to_string(),
+    backup_id,
+    switched_from,
+    switched_to: provider_id.to_string(),
+  })
+}
+
+fn create_tray_icon<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
+  use tauri::tray::TrayIconBuilder;
+  let providers = {
+    let shared_state: State<SharedState> = app.state();
+    let state_guard = shared_state
+      .state
+      .lock()
+      .map_err(|_| std::io::Error::new(ErrorKind::Other, "state lock poisoned while creating tray icon"))?;
+    state_guard.providers.clone()
+  };
+  let menu = build_tray_menu(app, &providers)?;
 
   let mut tray_builder = TrayIconBuilder::with_id(TRAY_ICON_ID)
     .menu(&menu)
@@ -5718,7 +5889,14 @@ fn create_tray_icon<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Resu
         APP_IS_EXITING.store(true, Ordering::SeqCst);
         app_handle.exit(0);
       }
-      _ => {}
+      id => {
+        if let Some((app_type, provider_id)) = parse_tray_provider_switch_menu_id(id) {
+          let shared_state: State<SharedState> = app_handle.state();
+          if switch_provider_internal(&shared_state, app_type, &provider_id).is_ok() {
+            let _ = refresh_tray_menu(app_handle);
+          }
+        }
+      }
     });
 
   #[cfg(target_os = "macos")]
@@ -6295,6 +6473,63 @@ mod tests {
         ("Hidden Agent".to_string(), false),
         ("Antigravity".to_string(), true),
         ("Cursor".to_string(), true),
+      ]
+    );
+  }
+
+  #[test]
+  fn tray_provider_switch_menu_id_round_trips() {
+    let raw_id = tray_provider_switch_menu_id(&AppType::Codex, "provider-codex-api");
+    let parsed = parse_tray_provider_switch_menu_id(&raw_id);
+
+    assert_eq!(
+      parsed,
+      Some((AppType::Codex, "provider-codex-api".to_string()))
+    );
+  }
+
+  #[test]
+  fn tray_providers_for_app_filters_and_preserves_order() {
+    let providers = vec![
+      ProviderRecord {
+        id: "provider-claude-1".to_string(),
+        app_type: AppType::Claude,
+        name: "Claude Official".to_string(),
+        config: Value::Null,
+        is_current: false,
+        created_at: 1,
+        updated_at: 1,
+      },
+      ProviderRecord {
+        id: "provider-codex-1".to_string(),
+        app_type: AppType::Codex,
+        name: "Codex Work".to_string(),
+        config: Value::Null,
+        is_current: true,
+        created_at: 2,
+        updated_at: 2,
+      },
+      ProviderRecord {
+        id: "provider-codex-2".to_string(),
+        app_type: AppType::Codex,
+        name: "Codex Personal".to_string(),
+        config: Value::Null,
+        is_current: false,
+        created_at: 3,
+        updated_at: 3,
+      },
+    ];
+
+    let codex_providers = tray_providers_for_app(&providers, AppType::Codex);
+
+    assert_eq!(
+      codex_providers
+        .iter()
+        .map(|provider| (provider.id.clone(), provider.is_current))
+        .collect::<Vec<_>>(),
+      vec![
+        ("provider-codex-1".to_string(), true),
+        ("provider-codex-2".to_string(), false),
       ]
     );
   }

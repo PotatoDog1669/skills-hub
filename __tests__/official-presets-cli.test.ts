@@ -63,7 +63,7 @@ async function createRemoteRepo(
   }
 }
 
-describe('official preset CLI', () => {
+describe('kit preset CLI', () => {
   let tempRoot: string
   let tempHome: string
   let env: NodeJS.ProcessEnv
@@ -163,15 +163,15 @@ describe('official preset CLI', () => {
       SKILLS_HUB_OFFICIAL_PRESETS_DIR: catalogDir,
     }
 
-    const listed = await runCli(['official', 'list'], env)
+    const listed = await runCli(['kit', 'preset-list'], env)
     expect(listed.stdout).toContain('demo-web')
     expect(listed.stdout).toContain('skills=3')
 
-    const searched = await runCli(['official', 'search', 'nextjs'], env)
+    const searched = await runCli(['kit', 'preset-search', 'nextjs'], env)
     expect(searched.stdout).toContain('demo-web')
     expect(searched.stdout).toContain('Demo Web Preset')
 
-    const inspected = await runCli(['official', 'inspect', '--id', 'demo-web'], env)
+    const inspected = await runCli(['kit', 'preset-inspect', '--id', 'demo-web'], env)
     expect(inspected.stdout).toContain('demo-web | Demo Web Preset')
     expect(inspected.stdout).toContain('Policy: Official: Demo Web')
     expect(inspected.stdout).toContain('Policy template: policies/policy-demo.md')
@@ -180,16 +180,16 @@ describe('official preset CLI', () => {
     expect(inspected.stdout).toContain('Testing Toolkit')
     expect(inspected.stdout).toContain('test-coverage-analyzer')
 
-    const installed = await runCli(['official', 'install', '--id', 'demo-web'], env)
-    expect(installed.stdout).toContain('Official preset installed: demo-web')
+    const installed = await runCli(['kit', 'preset-install', '--id', 'demo-web'], env)
+    expect(installed.stdout).toContain('Preset installed: demo-web')
     expect(installed.stdout).toContain('Policy:')
-    expect(installed.stdout).toContain('Loadout:')
+    expect(installed.stdout).toContain('Skills package:')
     expect(installed.stdout).toContain('Kit:')
 
     const policies = await runCli(['kit', 'policy-list'], env)
     expect(policies.stdout).toContain('Official: Demo Web')
 
-    const loadouts = await runCli(['kit', 'loadout-list'], env)
+    const loadouts = await runCli(['kit', 'package-list'], env)
     expect(loadouts.stdout).toContain('Official: Demo Web Preset')
     expect(loadouts.stdout).not.toContain('Official Source: Demo Web Preset / Next.js Toolkit')
     expect(loadouts.stdout).not.toContain('Official Source: Demo Web Preset / Testing Toolkit')
@@ -213,14 +213,15 @@ describe('official preset CLI', () => {
       { spaces: 2 }
     )
 
-    const installedSharedSource = await runCli(['official', 'install', '--id', 'demo-design'], env)
-    expect(installedSharedSource.stdout).toContain('Official preset installed: demo-design')
+    const installedSharedSource = await runCli(['kit', 'preset-install', '--id', 'demo-design'], env)
+    expect(installedSharedSource.stdout).toContain('Preset installed: demo-design')
     expect(await fs.pathExists(path.join(hubPath, 'app-router-helper', 'SKILL.md'))).toBe(true)
     expect(await fs.pathExists(path.join(hubPath, 'ssr-ssg-advisor', 'SKILL.md'))).toBe(true)
     expect(await fs.pathExists(path.join(hubPath, 'web-design-guidelines', 'SKILL.md'))).toBe(true)
     expect(await fs.pathExists(path.join(hubPath, 'unselected-helper', 'SKILL.md'))).toBe(false)
 
-    await runCli(['official', 'install', '--id', 'demo-web'], env)
+    const legacyInstalled = await runCli(['official', 'install', '--id', 'demo-web'], env)
+    expect(legacyInstalled.stdout).toContain('Preset installed: demo-web')
     const kitsAfterReinstall = await runCli(['kit', 'list'], env)
     const matchingLines = kitsAfterReinstall.stdout
       .split('\n')

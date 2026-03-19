@@ -144,7 +144,7 @@ describe('kit loadout-import CLI', () => {
 
     const firstRun = await runCli(['kit', 'loadout-import', '--url', remote.remoteUrl], env)
     expect(firstRun.stdout).toContain('Imported skills: discovered=2, overwritten=0, removed=0')
-    expect(firstRun.stdout).toContain('Loadout created:')
+    expect(firstRun.stdout).toContain('Skills package created:')
 
     const hubPath = path.join(tempHome, 'skills-hub')
     expect(await fs.pathExists(path.join(hubPath, 'a', 'SKILL.md'))).toBe(true)
@@ -161,7 +161,7 @@ describe('kit loadout-import CLI', () => {
       env
     )
     expect(secondRun.stdout).toContain('Imported skills: discovered=2, overwritten=1, removed=1')
-    expect(secondRun.stdout).toContain('Loadout updated:')
+    expect(secondRun.stdout).toContain('Skills package updated:')
 
     expect(await fs.pathExists(path.join(hubPath, 'a', 'SKILL.md'))).toBe(true)
     expect(await fs.pathExists(path.join(hubPath, 'b'))).toBe(false)
@@ -175,7 +175,7 @@ describe('kit loadout-import CLI', () => {
 
     const imported = await runCli(['kit', 'loadout-import', '--url', remote.remoteUrl], env)
     expect(imported.stdout).toContain('Root subdir: /')
-    expect(imported.stdout).toContain('Loadout created:')
+    expect(imported.stdout).toContain('Skills package created:')
     expect(await fs.pathExists(path.join(tempHome, 'skills-hub', 'demo', 'SKILL.md'))).toBe(true)
   }, 60_000)
 

@@ -24,7 +24,7 @@ describe('kit CLI', () => {
     await fs.remove(tempRoot)
   })
 
-  it('supports policy/loadout/kit/apply flow', async () => {
+  it('supports policy/package/kit/apply flow', async () => {
     const env = {
       ...process.env,
       HOME: tempHome,
@@ -85,7 +85,7 @@ describe('kit CLI', () => {
       [
         'bin/skills-hub',
         'kit',
-        'loadout-add',
+        'package-add',
         '--name',
         'frontend-loadout',
         '--skills',
@@ -95,9 +95,9 @@ describe('kit CLI', () => {
       ],
       { cwd: repoRoot, env }
     )
-    expect(loadoutAdded.stdout).toContain('Loadout created:')
+    expect(loadoutAdded.stdout).toContain('Skills package created:')
 
-    const loadoutListed = await execFileAsync('node', ['bin/skills-hub', 'kit', 'loadout-list'], {
+    const loadoutListed = await execFileAsync('node', ['bin/skills-hub', 'kit', 'package-list'], {
       cwd: repoRoot,
       env,
     })
@@ -120,7 +120,7 @@ describe('kit CLI', () => {
         'frontend-kit',
         '--policy-id',
         policyId!,
-        '--loadout-id',
+        '--package-id',
         loadoutId!,
       ],
       { cwd: repoRoot, env }

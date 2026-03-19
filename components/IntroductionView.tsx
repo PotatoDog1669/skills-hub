@@ -34,7 +34,8 @@ const content = {
           loadouts from repositories.
         </li>
         <li>
-          Install official presets into managed Kits and re-sync or restore their baseline later.
+          Start from bundled recommended Kits, then re-sync or restore their baseline later when
+          needed.
         </li>
         <li>
           Manage app-specific and universal Providers with switch, restore, capture, and re-apply
@@ -59,7 +60,8 @@ const content = {
         In <strong>Kit</strong>, instruction templates support drag import, GitHub import, and
         manual editing for <code>AGENTS.md</code> or <code>CLAUDE.md</code>. Loadouts can be built
         from Hub skills or imported from a repository, then combined into Kits and applied to a
-        target project + agent in one step.
+        target project + agent in one step. Bundled recommendations are treated as local Kits once
+        installed.
       </>
     ),
     providerTitle: '4. Provider Workflow',
@@ -89,8 +91,8 @@ const content = {
     saveTitle: 'Step 4: Compose and Apply Kit',
     saveText: (
       <>
-        Create or import an instruction template, assemble a loadout, or install an official
-        preset. Save the result as a Kit, then apply it to the target project + agent.
+        Create or import an instruction template, assemble a loadout, or start from a bundled
+        recommendation. Save the result as a Kit, then apply it to the target project + agent.
       </>
     ),
     createTitle: 'Step 5: Manage Providers',
@@ -114,8 +116,7 @@ const content = {
     cliText: (
       <>
         Key groups: <code>skills-hub list/import/sync</code>, <code>provider ...</code>,{' '}
-        <code>kit policy-*</code>, <code>kit loadout-*</code>, <code>kit add/update/apply</code>,
-        and <code>official list/install</code>.
+        <code>kit policy-*</code>, <code>kit package-*</code>, <code>kit list/add/update/apply</code>.
       </>
     ),
     marketTitle: 'Skill Sources',
@@ -158,7 +159,7 @@ const content = {
         <li>
           支持用指令模板和 skills 包组合 Kit，也支持直接从仓库导入 skills 包。
         </li>
-        <li>支持导入官方 presets，生成受管理的推荐 Kit，并在后续重新同步或恢复基线。</li>
+        <li>支持从内置推荐内容出发生成受管理的 Kit，并在后续重新同步或恢复基线。</li>
         <li>支持应用级与通用 Provider 管理，包含切换、恢复、抓取当前配置和重新应用。</li>
       </ul>
     ),
@@ -176,7 +177,7 @@ const content = {
     kitText: (
       <>
         在 <strong>Kit</strong> 视图中，指令模板支持拖拽导入、GitHub 导入和手动编辑，可用于
-        <code>AGENTS.md</code> 或 <code>CLAUDE.md</code>。skills 包既可以从 Hub 技能组合，也可以直接从仓库导入；随后可与模板组装成 Kit，并一键应用到目标项目和 Agent。
+        <code>AGENTS.md</code> 或 <code>CLAUDE.md</code>。skills 包既可以从 Hub 技能组合，也可以直接从仓库导入；随后可与模板组装成 Kit，并一键应用到目标项目和 Agent。内置推荐内容一旦导入，也按本地 Kit 管理。
       </>
     ),
     providerTitle: '4. Provider 流程',
@@ -205,7 +206,7 @@ const content = {
     saveTitle: '第 4 步：组合并应用 Kit',
     saveText: (
       <>
-        先创建或导入指令模板，再组装 skills 包，或者直接安装官方 preset。保存为 Kit 后，再应用到目标项目和 Agent。
+        先创建或导入指令模板，再组装 skills 包，或者直接从内置推荐内容开始。保存为 Kit 后，再应用到目标项目和 Agent。
       </>
     ),
     createTitle: '第 5 步：管理 Providers',
@@ -228,8 +229,7 @@ const content = {
     cliText: (
       <>
         常用命令组：<code>skills-hub list/import/sync</code>、<code>provider ...</code>、
-        <code>kit policy-*</code>、<code>kit loadout-*</code>、<code>kit add/update/apply</code>、
-        <code>official list/install</code>。
+        <code>kit policy-*</code>、<code>kit package-*</code>、<code>kit list/add/update/apply</code>。
       </>
     ),
     marketTitle: '技能来源',

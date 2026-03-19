@@ -135,11 +135,11 @@ Output directory:
 | `skills-hub provider universal-add ...`   | Create one universal API provider and sync to multiple apps                     |
 | `skills-hub provider universal-list`      | List all universal providers                                                    |
 | `skills-hub provider universal-apply ...` | Re-apply a universal provider to enabled apps                                   |
-| `skills-hub kit policy-*`                 | Manage AGENTS.md templates (`policy-list/add/update/delete`)                    |
-| `skills-hub kit loadout-*`                | Manage skill packages (`loadout-list/add/update/delete`)                        |
-| `skills-hub kit add/update/delete/apply`  | Compose Kit and apply it to target project + agent                              |
+| `skills-hub kit policy-*`                 | Manage local AGENTS.md templates (`policy-list/add/update/delete`)              |
+| `skills-hub kit package-*`                | Manage local skill packages (`package-list/add/update/delete`)                  |
+| `skills-hub kit add/update/delete/apply`  | Manage local kits and apply them to a target project + agent                    |
 
-Note: `skills-hub kit ...` stays local and does not auto-install official presets. Use `skills-hub official install --id <presetId>` when you explicitly want to install curated official content.
+Note: `skills-hub kit ...` is the main entry point for local templates, skill packages, and kits. `package-*` is the primary user-facing name for skill packages, while `loadout-*` remains available as a backward-compatible alias. Some bundled recommendation flows still exist internally for compatibility, but they are not part of the primary user-facing command set.
 
 ### Import/List/Remove Quick Examples
 

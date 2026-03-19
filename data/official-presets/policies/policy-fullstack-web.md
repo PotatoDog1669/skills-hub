@@ -1,24 +1,43 @@
 # AGENTS.md
 
-## Project Overview
+## Project Scope
 
-- This project ships product features across frontend and backend boundaries.
-- Prefer small, reviewable changes with clear contracts and rollback paths.
+- This project delivers product features across UI, API, and data boundaries.
+- Prefer small, reversible changes with explicit contracts between layers.
+- Optimize for maintainability and predictable behavior over cleverness.
+
+## Architecture Rules
+
+- Keep business rules in shared services, not in route handlers or UI components.
+- UI components handle presentation and local interaction only.
+- API routes and server actions validate input, enforce auth, and delegate to services.
+- Schema and migration changes must be explicit and reviewed with rollout impact in mind.
 
 ## Frontend Rules
 
-- Default to React Server Components when possible.
-- Keep UI state minimal and colocated.
-- Avoid waterfalls, oversized client bundles, and duplicate data fetching.
+- Prefer React Server Components for read-heavy views and use client components only where interaction requires them.
+- Keep client state minimal, local, and derived whenever possible.
+- Avoid waterfalls, oversized client bundles, and duplicate data fetching across server and client.
+- Handle loading, empty, error, and mutation states intentionally.
+- Forms and optimistic updates must include validation and failure recovery.
 
 ## Backend Rules
 
-- Validate inputs at the boundary.
+- Validate input and permissions at the boundary.
 - Keep transport handlers thin and move business logic into services.
-- Make schema, auth, and migration changes explicit.
+- Make writes idempotent when retries are plausible.
+- Be explicit about transactions, consistency assumptions, and side effects.
+- Schema, auth, and migration changes must include rollback notes when risk is non-trivial.
+
+## Quality Rules
+
+- Changed behavior requires regression coverage.
+- Add integration tests for cross-boundary changes.
+- Call out performance, accessibility, and SEO impact for user-facing changes when relevant.
+- Fail with actionable errors and do not swallow exceptions silently.
 
 ## Delivery Workflow
 
-- Break work into a short plan before implementation.
-- Add or update regression tests for changed behavior.
-- Call out UX, API, and data-model risk clearly in the final summary.
+- Start with a short implementation plan for non-trivial work.
+- Separate refactors from behavior changes unless coupling makes that impractical.
+- Call out UX, API, data-model, and rollout risk clearly in the final summary.

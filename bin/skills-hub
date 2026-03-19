@@ -36,6 +36,7 @@ const flagsWithValues = new Set([
     '--config-file',
     '--policy-id',
     '--loadout-id',
+    '--package-id',
     '--description',
     '--skills',
     '--url',
@@ -106,16 +107,14 @@ function printHelp() {
 
 Commands:
   import <url> [options]             Import a skill from a git repository
-  list [options]                     List installed skills (alias: ls)
+  list [options]                     List installed individual skills (alias: ls)
   remove [skills...] [options]       Remove installed skills (alias: rm)
   sync --all | --target <name>       Sync hub skills to agent targets
   provider <subcommand>              Manage provider profiles and switching
-  kit <subcommand>                   Manage AGENTS templates, loadouts, and kits
-  official <subcommand>              Manage official preset catalog installs
+  kit <subcommand>                   Manage local AGENTS templates, skill packages, and kits
 
 Behavior:
-  kit commands are local-only and do not auto-install official presets
-  official install ...               Explicitly installs official preset content
+  kit commands work with local assets only
 
 Import options:
   -b, --branch <branch>              Use branch when importing from Git
@@ -128,7 +127,7 @@ Import options:
 List options:
   -g, --global                       Show global installation scope
   -a, --agent <name>                 Filter by target agent(s)
-  --hub                              Show skills in hub storage instead of installation view
+  --hub                              Show individual skills in hub storage instead of installation view
 
 Remove options:
   -g, --global                       Remove from global installation scope
@@ -151,26 +150,21 @@ Provider subcommands:
   provider universal-delete --id <universalProviderId>       Delete universal provider
 
 Kit subcommands:
-  kit policy-list
+  kit policy-list                    List local AGENTS.md templates
   kit policy-add --name <name> [--description <text>] (--content <text> | --content-file <path>)
   kit policy-update --id <id> [--name <name>] [--description <text>] [--content <text>|--content-file <path>]
   kit policy-delete --id <id>
-  kit loadout-list
-  kit loadout-add --name <name> --skills <path1,path2,...> [--description <text>] [--mode copy|link]
-  kit loadout-update --id <id> [--name <name>] [--description <text>] [--skills <path1,path2,...>] [--mode copy|link]
-  kit loadout-import --url <repoOrTreeUrl> [--name <packageName>] [--description <text>] [--yes]
-  kit loadout-delete --id <id>
-  kit list
-  kit add --name <name> [--policy-id <id>] [--loadout-id <id>] [--description <text>]
-  kit update --id <id> [--name <name>] [--policy-id <id>] [--loadout-id <id>] [--description <text>]
+  kit package-list                   List local skill packages
+  kit package-add --name <name> --skills <path1,path2,...> [--description <text>] [--mode copy|link]
+  kit package-update --id <id> [--name <name>] [--description <text>] [--skills <path1,path2,...>] [--mode copy|link]
+  kit package-import --url <repoOrTreeUrl> [--name <packageName>] [--description <text>] [--yes]
+  kit package-delete --id <id>
+  kit loadout-*                      Backward-compatible aliases for package-* commands
+  kit list                           List local kits
+  kit add --name <name> [--policy-id <id>] [--package-id <id>] [--description <text>]
+  kit update --id <id> [--name <name>] [--policy-id <id>] [--package-id <id>] [--description <text>]
   kit delete --id <id>
   kit apply --id <id> --project <path> --agent <name> [--mode copy|link] [--overwrite-agents-md] [--with <skill>] [--without <skill>]
-
-Official subcommands:
-  official list
-  official search <query>
-  official inspect --id <presetId>
-  official install --id <presetId> [--yes]
 
   -v, --version       Show version number
   -h, --help          Show this help message
@@ -753,7 +747,7 @@ function printKitLoadoutRow(loadout) {
 }
 
 function printKitRow(kit) {
-    console.log(`- ${kit.id} | ${kit.name} | policy=${kit.policyId} | loadout=${kit.loadoutId}`);
+    console.log(`- ${kit.id} | ${kit.name} | policy=${kit.policyId} | package=${kit.loadoutId}`);
 }
 
 function printOfficialPresetRow(preset) {
@@ -764,9 +758,17 @@ function printOfficialPresetRow(preset) {
 }
 
 async function handleKit(commandArgs) {
-    const subcommand = commandArgs[0];
+    const rawSubcommand = commandArgs[0];
+    const packageSubcommandAliases = new Map([
+        ['loadout-list', 'package-list'],
+        ['loadout-add', 'package-add'],
+        ['loadout-update', 'package-update'],
+        ['loadout-import', 'package-import'],
+        ['loadout-delete', 'package-delete'],
+    ]);
+    const subcommand = packageSubcommandAliases.get(rawSubcommand) || rawSubcommand;
     if (!subcommand) {
-        throw new Error('Missing kit subcommand. Try: kit policy-list|policy-add|loadout-list|add|apply');
+        throw new Error('Missing kit subcommand. Try: kit policy-list|package-list|list|add|apply');
     }
 
     const service = await loadKitService();
@@ -829,7 +831,86 @@ async function handleKit(commandArgs) {
             console.log(deleted ? `Deleted policy: ${id}` : `Policy not found: ${id}`);
             return;
         }
-        case 'loadout-list': {
+        case 'preset-list': {
+            const presets = await service.listOfficialPresets();
+            if (presets.length === 0) {
+                console.log('No presets found.');
+                return;
+            }
+            presets.forEach(printOfficialPresetRow);
+            return;
+        }
+        case 'preset-search': {
+            const query = commandArgs.slice(1).join(' ').trim();
+            const presets = await service.searchOfficialPresets({
+                query,
+            });
+            if (presets.length === 0) {
+                console.log('No presets matched.');
+                return;
+            }
+            presets.forEach(printOfficialPresetRow);
+            return;
+        }
+        case 'preset-inspect': {
+            const rest = commandArgs.slice(1);
+            const id = readArgValue(rest, '--id');
+
+            if (!id) {
+                throw new Error('kit preset-inspect requires --id');
+            }
+
+            const preset = await service.getOfficialPreset({
+                id,
+            });
+
+            console.log(`${preset.id} | ${preset.name}`);
+            if (preset.description) {
+                console.log(preset.description);
+            }
+            console.log(`Policy: ${preset.policy.name}`);
+            if (preset.policy.description) {
+                console.log(`Policy description: ${preset.policy.description}`);
+            }
+            console.log(`Policy template: ${preset.policy.template}`);
+            console.log(`Total selected skills: ${preset.skillCount}`);
+            console.log('Sources:');
+            for (const source of preset.sources) {
+                console.log(`- ${source.id} | ${source.name}`);
+                console.log(`  url: ${source.url}`);
+                if (source.description) {
+                    console.log(`  description: ${source.description}`);
+                }
+                console.log(`  skills: ${source.selectedSkills.join(', ')}`);
+            }
+            return;
+        }
+        case 'preset-install': {
+            const rest = commandArgs.slice(1);
+            const id = readArgValue(rest, '--id');
+            const overwrite = hasFlag(rest, '--yes') || hasFlag(rest, '-y');
+
+            if (!id) {
+                throw new Error('kit preset-install requires --id');
+            }
+
+            const result = await service.installOfficialPreset({
+                id,
+                overwrite,
+            });
+
+            console.log(`Preset installed: ${result.preset.id} (${result.preset.name})`);
+            console.log(`Policy: ${result.policy.id} (${result.policy.name})`);
+            console.log(
+                `Skills package: ${result.loadout.id} (${result.loadout.name}) skills=${result.loadout.items.length}`
+            );
+            console.log(`Kit: ${result.kit.id} (${result.kit.name})`);
+            console.log(
+                `Sources imported: ${result.importedSources.map((source) => `${source.name}:${source.selectedSkillCount}`).join(', ')}`
+            );
+            return;
+        }
+        case 'package-list': {
             const loadouts = service.listKitLoadouts();
             if (loadouts.length === 0) {
                 console.log('No skills packages found.');
@@ -838,7 +919,7 @@ async function handleKit(commandArgs) {
             loadouts.forEach(printKitLoadoutRow);
             return;
         }
-        case 'loadout-add': {
+        case 'package-add': {
             const rest = commandArgs.slice(1);
             const name = readArgValue(rest, '--name');
             const description = readArgValue(rest, '--description');
@@ -846,7 +927,7 @@ async function handleKit(commandArgs) {
             const mode = normalizeKitMode(readArgValue(rest, '--mode'));
 
             if (!name || !skillsRaw) {
-                throw new Error('kit loadout-add requires --name and --skills');
+                throw new Error('kit package-add requires --name and --skills');
             }
 
             const skillPaths = parseSkillsArg(skillsRaw);
@@ -859,10 +940,10 @@ async function handleKit(commandArgs) {
                     sortOrder: index,
                 })),
             });
-            console.log(`Loadout created: ${loadout.id} (${loadout.name})`);
+            console.log(`Skills package created: ${loadout.id} (${loadout.name})`);
             return;
         }
-        case 'loadout-update': {
+        case 'package-update': {
             const rest = commandArgs.slice(1);
             const id = readArgValue(rest, '--id');
             const name = readArgValue(rest, '--name');
@@ -871,7 +952,7 @@ async function handleKit(commandArgs) {
             const mode = normalizeKitMode(readArgValue(rest, '--mode'));
 
             if (!id) {
-                throw new Error('kit loadout-update requires --id');
+                throw new Error('kit package-update requires --id');
             }
 
             const items = skillsRaw
@@ -888,10 +969,10 @@ async function handleKit(commandArgs) {
                 description: description || undefined,
                 items,
             });
-            console.log(`Loadout updated: ${loadout.id} (${loadout.name})`);
+            console.log(`Skills package updated: ${loadout.id} (${loadout.name})`);
             return;
         }
-        case 'loadout-import': {
+        case 'package-import': {
             const rest = commandArgs.slice(1);
             const url = readArgValue(rest, '--url');
             const name = readArgValue(rest, '--name');
@@ -899,7 +980,7 @@ async function handleKit(commandArgs) {
             const overwrite = hasFlag(rest, '--yes') || hasFlag(rest, '-y');
 
             if (!url) {
-                throw new Error('kit loadout-import requires --url');
+                throw new Error('kit package-import requires --url');
             }
 
             const result = await service.importKitLoadoutFromRepo({
@@ -915,18 +996,19 @@ async function handleKit(commandArgs) {
             console.log(
                 `Imported skills: discovered=${result.discoveredCount}, overwritten=${result.overwrittenCount}, removed=${result.removedCount}`
             );
-            const loadoutLabel = result.loadoutStatus === 'updated' ? 'Loadout updated' : 'Loadout created';
+            const loadoutLabel =
+                result.loadoutStatus === 'updated' ? 'Skills package updated' : 'Skills package created';
             console.log(`${loadoutLabel}: ${result.loadout.id} (${result.loadout.name})`);
             return;
         }
-        case 'loadout-delete': {
+        case 'package-delete': {
             const rest = commandArgs.slice(1);
             const id = readArgValue(rest, '--id');
             if (!id) {
-                throw new Error('kit loadout-delete requires --id');
+                throw new Error('kit package-delete requires --id');
             }
             const deleted = service.deleteKitLoadout(id);
-            console.log(deleted ? `Deleted loadout: ${id}` : `Loadout not found: ${id}`);
+            console.log(deleted ? `Deleted skills package: ${id}` : `Skills package not found: ${id}`);
             return;
         }
         case 'list': {
@@ -943,13 +1025,13 @@ async function handleKit(commandArgs) {
             const name = readArgValue(rest, '--name');
             const description = readArgValue(rest, '--description');
             const policyId = readArgValue(rest, '--policy-id');
-            const loadoutId = readArgValue(rest, '--loadout-id');
+            const loadoutId = readArgValue(rest, '--package-id') || readArgValue(rest, '--loadout-id');
 
             if (!name) {
                 throw new Error('kit add requires --name');
             }
             if (!policyId && !loadoutId) {
-                throw new Error('kit add requires at least one of --policy-id / --loadout-id');
+                throw new Error('kit add requires at least one of --policy-id / --package-id');
             }
 
             const kit = service.addKit({
@@ -967,7 +1049,7 @@ async function handleKit(commandArgs) {
             const name = readArgValue(rest, '--name');
             const description = readArgValue(rest, '--description');
             const policyId = readArgValue(rest, '--policy-id');
-            const loadoutId = readArgValue(rest, '--loadout-id');
+            const loadoutId = readArgValue(rest, '--package-id') || readArgValue(rest, '--loadout-id');
 
             if (!id) {
                 throw new Error('kit update requires --id');
@@ -1033,92 +1115,19 @@ async function handleKit(commandArgs) {
 async function handleOfficial(commandArgs) {
     const subcommand = commandArgs[0];
     if (!subcommand) {
-        throw new Error('Missing official subcommand. Try: official list|install');
+        throw new Error('Missing official subcommand. Try: kit preset-list|preset-install');
     }
-
-    const service = await loadKitService();
-
-    switch (subcommand) {
-        case 'list': {
-            const presets = await service.listOfficialPresets();
-            if (presets.length === 0) {
-                console.log('No official presets found.');
-                return;
-            }
-            presets.forEach(printOfficialPresetRow);
-            return;
-        }
-        case 'search': {
-            const query = commandArgs.slice(1).join(' ').trim();
-            const presets = await service.searchOfficialPresets({
-                query,
-            });
-            if (presets.length === 0) {
-                console.log('No official presets matched.');
-                return;
-            }
-            presets.forEach(printOfficialPresetRow);
-            return;
-        }
-        case 'inspect': {
-            const rest = commandArgs.slice(1);
-            const id = readArgValue(rest, '--id');
-
-            if (!id) {
-                throw new Error('official inspect requires --id');
-            }
-
-            const preset = await service.getOfficialPreset({
-                id,
-            });
-
-            console.log(`${preset.id} | ${preset.name}`);
-            if (preset.description) {
-                console.log(preset.description);
-            }
-            console.log(`Policy: ${preset.policy.name}`);
-            if (preset.policy.description) {
-                console.log(`Policy description: ${preset.policy.description}`);
-            }
-            console.log(`Policy template: ${preset.policy.template}`);
-            console.log(`Total selected skills: ${preset.skillCount}`);
-            console.log('Sources:');
-            for (const source of preset.sources) {
-                console.log(`- ${source.id} | ${source.name}`);
-                console.log(`  url: ${source.url}`);
-                if (source.description) {
-                    console.log(`  description: ${source.description}`);
-                }
-                console.log(`  skills: ${source.selectedSkills.join(', ')}`);
-            }
-            return;
-        }
-        case 'install': {
-            const rest = commandArgs.slice(1);
-            const id = readArgValue(rest, '--id');
-            const overwrite = hasFlag(rest, '--yes') || hasFlag(rest, '-y');
-
-            if (!id) {
-                throw new Error('official install requires --id');
-            }
-
-            const result = await service.installOfficialPreset({
-                id,
-                overwrite,
-            });
-
-            console.log(`Official preset installed: ${result.preset.id} (${result.preset.name})`);
-            console.log(`Policy: ${result.policy.id} (${result.policy.name})`);
-            console.log(`Loadout: ${result.loadout.id} (${result.loadout.name}) skills=${result.loadout.items.length}`);
-            console.log(`Kit: ${result.kit.id} (${result.kit.name})`);
-            console.log(
-                `Sources imported: ${result.importedSources.map((source) => `${source.name}:${source.selectedSkillCount}`).join(', ')}`
-            );
-            return;
-        }
-        default:
-            throw new Error(`Unknown official subcommand: ${subcommand}`);
+    const compatibilityMap = new Map([
+        ['list', 'preset-list'],
+        ['search', 'preset-search'],
+        ['inspect', 'preset-inspect'],
+        ['install', 'preset-install'],
+    ]);
+    const mappedSubcommand = compatibilityMap.get(subcommand);
+    if (!mappedSubcommand) {
+        throw new Error(`Unknown official subcommand: ${subcommand}`);
     }
+    await handleKit([mappedSubcommand, ...commandArgs.slice(1)]);
 }
 
 async function handleProvider(commandArgs) {

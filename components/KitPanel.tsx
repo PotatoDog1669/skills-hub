@@ -68,6 +68,8 @@ function stripDisplayPrefixes(value?: string | null): string {
     .replace(/^Recommended:\s*/i, '')
     .replace(/^Official Source:\s*/i, '')
     .replace(/^Official:\s*/i, '')
+    .replace(/^Bundled Source:\s*/i, '')
+    .replace(/^Bundled:\s*/i, '')
     .trim()
 }
 
@@ -1207,13 +1209,13 @@ export function KitPanel({
         const result = await actionOfficialPresetInstallAll()
         setMessage({
           type: 'success',
-          text: `已导入 ${result.installed.length} 个推荐 Kit。`,
+          text: `已补齐 ${result.installed.length} 个内置推荐 Kit。`,
         })
         router.refresh()
       } catch (error) {
         setMessage({
           type: 'error',
-          text: error instanceof Error ? error.message : `批量导入推荐 Kit 失败：${String(error)}`,
+          text: error instanceof Error ? error.message : `补齐内置推荐 Kit 失败：${String(error)}`,
         })
       }
     })
@@ -1222,14 +1224,14 @@ export function KitPanel({
   const syncManagedKit = (kit: KitRecord) => {
     const presetId = kit.managedSource?.presetId
     if (!presetId) {
-      setMessage({ type: 'error', text: '当前 Kit 没有关联的推荐来源。' })
+      setMessage({ type: 'error', text: '当前 Kit 没有关联的内置来源。' })
       return
     }
 
     void (async () => {
       const confirmed = await confirm({
         title: '重新同步 Kit',
-        message: `重新同步 Kit「${stripDisplayPrefixes(kit.name) || '未命名 Kit'}」？\n\n这会用推荐来源的最新内容覆盖当前受管理的 Kit。`,
+        message: `重新同步 Kit「${stripDisplayPrefixes(kit.name) || '未命名 Kit'}」？\n\n这会用内置来源的最新内容覆盖当前受管理的 Kit。`,
         type: 'info',
         confirmText: '重新同步',
         cancelText: '取消',
@@ -1248,7 +1250,7 @@ export function KitPanel({
           setSelectedLoadoutSkills(result.loadout.items.map((item) => item.skillPath))
           setMessage({
             type: 'success',
-            text: `已重新同步：${result.preset.name}`,
+            text: `已重新同步内置内容：${result.preset.name}`,
           })
           router.refresh()
         } catch (error) {
@@ -1271,7 +1273,7 @@ export function KitPanel({
     void (async () => {
       const confirmed = await confirm({
         title: '恢复 Kit',
-        message: `恢复 Kit「${stripDisplayPrefixes(targetKit.name) || '未命名 Kit'}」到导入基线？\n\n这会用 ${targetKit.managedSource?.presetName} 的基线内容覆盖当前受管理的 Kit。`,
+        message: `恢复 Kit「${stripDisplayPrefixes(targetKit.name) || '未命名 Kit'}」到导入基线？\n\n这会用 ${targetKit.managedSource?.presetName} 的内置基线内容覆盖当前受管理的 Kit。`,
         type: 'info',
         confirmText: '恢复',
         cancelText: '取消',
@@ -1292,7 +1294,7 @@ export function KitPanel({
           )
           setMessage({
             type: 'success',
-            text: `已恢复到 ${targetKit.managedSource?.presetName} 的导入基线。`,
+            text: `已恢复到 ${targetKit.managedSource?.presetName} 的内置基线。`,
           })
           router.refresh()
         } catch (error) {
@@ -1581,7 +1583,7 @@ export function KitPanel({
                     disabled={isPending}
                     className="rounded border border-gray-200 px-2.5 py-1 text-[11px] hover:bg-gray-50 disabled:opacity-60"
                   >
-                    导入全部推荐 Kits
+                    补齐内置推荐 Kits
                   </button>
                 ) : null}
                 <button
@@ -2148,7 +2150,6 @@ export function KitPanel({
                       >
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-gray-400">⋮⋮</span>
                             <div className="truncate text-xs font-medium">{skill.name}</div>
                           </div>
                           <div className="truncate text-[11px] text-gray-500">

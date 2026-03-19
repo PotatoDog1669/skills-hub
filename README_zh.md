@@ -137,11 +137,11 @@ npm run tauri:build
 | `skills-hub provider universal-add ...`   | 创建统一供应商并同步到多个 app                                         |
 | `skills-hub provider universal-list`      | 查看统一供应商列表                                                     |
 | `skills-hub provider universal-apply ...` | 将统一供应商重新同步到已启用 app                                       |
-| `skills-hub kit policy-*`                 | 管理 AGENTS.md 模板（`policy-list/add/update/delete`）                 |
-| `skills-hub kit loadout-*`                | 管理技能包（`loadout-list/add/update/delete`）                         |
-| `skills-hub kit add/update/delete/apply`  | 组合 Kit 并应用到目标项目 + Agent                                      |
+| `skills-hub kit policy-*`                 | 管理本地 AGENTS.md 模板（`policy-list/add/update/delete`）             |
+| `skills-hub kit package-*`                | 管理本地 skills 包（`package-list/add/update/delete`）                 |
+| `skills-hub kit add/update/delete/apply`  | 管理本地 Kit，并应用到目标项目 + Agent                                 |
 
-说明：`skills-hub kit ...` 只处理本地 kit 数据，不会自动安装官方 preset。只有在你显式执行 `skills-hub official install --id <presetId>` 时，才会安装官方精选内容。
+说明：`skills-hub kit ...` 是本地模板、skills 包和 Kit 的主入口；其中 `package-*` 是面向用户的主叫法，`loadout-*` 作为兼容别名继续保留。部分内置推荐内容的兼容流程仍然存在，但不属于主推的用户命令集。
 
 ### import/list/remove 快速示例
 
