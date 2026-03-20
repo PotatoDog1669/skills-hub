@@ -1,0 +1,59 @@
+name: Update Homebrew Tap
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version to sync, for example 0.1.20"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  update-homebrew-tap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Download release assets
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          VERSION="${INPUT_VERSION#v}"
+          TAG="v${VERSION}"
+
+          mkdir -p release-assets
+
+          for arch in aarch64 x64; do
+            ASSET="skills-hub_${VERSION}_macos_${arch}.dmg"
+            curl -fsSL \
+              -o "release-assets/${ASSET}" \
+              "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}"
+          done
+
+      - name: Update Homebrew tap formula
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          HOMEBREW_TAP_REPO: ${{ vars.HOMEBREW_TAP_REPO }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${HOMEBREW_TAP_GITHUB_TOKEN:-}" ]; then
+            echo "HOMEBREW_TAP_GITHUB_TOKEN not configured" >&2
+            exit 1
+          fi
+
+          VERSION="${INPUT_VERSION#v}"
+          bash ./scripts/update-homebrew-tap.sh \
+            "${VERSION}" \
+            "release-assets/skills-hub_${VERSION}_macos_aarch64.dmg" \
+            "release-assets/skills-hub_${VERSION}_macos_x64.dmg"

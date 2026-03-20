@@ -159,11 +159,20 @@ jobs:
             release-assets/skills-hub_${{ steps.metadata.outputs.version }}_macos_x64.tar.gz
 
       - name: Publish to npm
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
-          npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          PACKAGE_NAME="@skillshub-labs/cli"
+
+          if npm view "${PACKAGE_NAME}@${VERSION}" version --silent >/dev/null 2>&1; then
+            echo "::notice::${PACKAGE_NAME}@${VERSION} is already published; skipping npm publish."
+            exit 0
+          fi
+
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > .npmrc
+          npm publish --access public
 
       - name: Update Homebrew tap formula
         env:
@@ -178,51 +187,7 @@ jobs:
           fi
 
           VERSION="${GITHUB_REF_NAME#v}"
-          PACKAGE_NAME="@skillshub-labs/cli"
-          TAP_REPO="${HOMEBREW_TAP_REPO:-PotatoDog1669/homebrew-skillshub}"
-          ARM64_DMG="release-assets/skills-hub_${VERSION}_macos_aarch64.dmg"
-          X64_DMG="release-assets/skills-hub_${VERSION}_macos_x64.dmg"
-
-          for attempt in {1..12}; do
-            TARBALL_URL="$(npm view "${PACKAGE_NAME}@${VERSION}" dist.tarball --silent || true)"
-            if [ -n "${TARBALL_URL}" ]; then
-              break
-            fi
-            echo "Waiting for npm metadata (${attempt}/12)..."
-            sleep 10
-          done
-
-          if [ -z "${TARBALL_URL:-}" ]; then
-            echo "Failed to resolve npm tarball URL for ${PACKAGE_NAME}@${VERSION}" >&2
-            exit 1
-          fi
-
-          SHA256="$(curl -fsSL "${TARBALL_URL}" | shasum -a 256 | awk '{print $1}')"
-          ARM64_SHA256="$(shasum -a 256 "${ARM64_DMG}" | awk '{print $1}')"
-          X64_SHA256="$(shasum -a 256 "${X64_DMG}" | awk '{print $1}')"
-
-          git clone "https://x-access-token:${HOMEBREW_TAP_GITHUB_TOKEN}@github.com/${TAP_REPO}.git" tap-repo
-
-          bash ./scripts/render-homebrew-formula.sh \
+          bash ./scripts/update-homebrew-tap.sh \
             "${VERSION}" \
-            "${TARBALL_URL}" \
-            "${SHA256}" \
-            "tap-repo/Formula/skills-hub.rb"
-          bash ./scripts/render-homebrew-cask.sh \
-            "${VERSION}" \
-            "${ARM64_SHA256}" \
-            "${X64_SHA256}" \
-            "tap-repo/Casks/skills-hub.rb"
-
-          cd tap-repo
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          if [ -z "$(git status --porcelain -- Formula/skills-hub.rb Casks/skills-hub.rb)" ]; then
-            echo "Formula and cask are already up to date."
-            exit 0
-          fi
-
-          git add Formula/skills-hub.rb Casks/skills-hub.rb
-          git commit -m "skills-hub ${VERSION}"
-          git push origin HEAD
+            "release-assets/skills-hub_${VERSION}_macos_aarch64.dmg" \
+            "release-assets/skills-hub_${VERSION}_macos_x64.dmg"

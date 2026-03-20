@@ -24,6 +24,9 @@ In this repository (`skills-hub`) set:
 - Secret: `HOMEBREW_TAP_GITHUB_TOKEN`
   - A classic PAT (or fine-grained token) with write access to the tap repo.
   - Minimum permission: repository `contents: write`.
+  - Do not use this repository's default `GITHUB_TOKEN`; it cannot push to a different repository.
+  - For a fine-grained PAT, explicitly grant access to the tap repo itself.
+  - If the tap repo belongs to an organization with SSO enabled, authorize the token for that organization.
 - Variable (optional): `HOMEBREW_TAP_REPO`
   - Default fallback is `PotatoDog1669/homebrew-skillshub`.
 
@@ -39,7 +42,27 @@ When tag `v*` is pushed:
 6. Render `Casks/skills-hub.rb` (Desktop app).
 7. Commit and push tap updates.
 
-## 4) User Install Commands
+If the release already published to npm but the tap step failed, run the GitHub Actions workflow `Update Homebrew Tap` with the released version, for example `0.1.20`. This workflow downloads the DMG assets from the existing GitHub Release and updates only the tap repository.
+
+## 4) Troubleshooting
+
+If release fails with:
+
+```text
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/<owner>/<repo>.git/'
+```
+
+Check these first:
+
+- `HOMEBREW_TAP_GITHUB_TOKEN` is a PAT or GitHub App installation token, not the source repository `GITHUB_TOKEN`.
+- The token can access `PotatoDog1669/homebrew-skillshub` (or the repo in `HOMEBREW_TAP_REPO`).
+- The token has repository `contents: write`.
+- If you used a fine-grained PAT, the tap repo was selected explicitly when creating the token.
+- If the tap repo is under an organization, SSO authorization has been completed for the token.
+- If npm already contains the target version, do not rerun the full release just to repair Homebrew. Use the manual `Update Homebrew Tap` workflow instead.
+
+## 5) User Install Commands
 
 Install CLI:
 
