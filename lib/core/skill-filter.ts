@@ -51,7 +51,7 @@ function instanceMatchesView(instance: Skill, context: SkillFilterContext): bool
 
   if (context.currentView === 'project') {
     if (!context.currentId) return false
-    return instance.path.startsWith(context.currentId)
+    return instance.projectPath === context.currentId || instance.path.startsWith(context.currentId)
   }
 
   if (context.currentView === 'agent') {
@@ -130,7 +130,8 @@ export function filterSkillGroups(
 
     return group.instances.some(
       (instance) =>
-        instanceMatchesView(instance, options) && instanceMatchesTag(instance, options.selectedTag)
+        instanceMatchesView(instance, options) &&
+        instanceMatchesTag(instance, options.selectedTag)
     )
   })
 }

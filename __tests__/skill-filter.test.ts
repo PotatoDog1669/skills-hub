@@ -33,6 +33,7 @@ const sampleSkills: Skill[] = [
     location: 'project',
     agentName: 'Codex',
     projectName: 'repo-a',
+    projectPath: '/workspace/repo-a',
   },
   {
     id: 'hub-skill-installer',
@@ -57,6 +58,7 @@ const sampleSkills: Skill[] = [
     location: 'project',
     agentName: 'Codex',
     projectName: 'repo-b',
+    projectPath: '/workspace/repo-b',
   },
   {
     id: 'codex-global-docs-tool',
@@ -74,6 +76,19 @@ const sampleSkills: Skill[] = [
     location: 'project',
     agentName: 'Cursor',
     projectName: 'repo-a',
+    projectPath: '/workspace/repo-a',
+  },
+  {
+    id: 'repo-a-codex-frontend-pack-helper-disabled',
+    name: 'frontend-pack-helper',
+    description: 'Disabled helper that should stay visible in project view',
+    path: '/workspace/repo-a/.skills-hub/disabled-skills/Codex/frontend-pack-helper',
+    location: 'project',
+    agentName: 'Codex',
+    projectName: 'repo-a',
+    projectPath: '/workspace/repo-a',
+    enabled: false,
+    sourcePackageName: 'frontend-pack',
   },
 ]
 
@@ -122,7 +137,7 @@ describe('skill filter core', () => {
       'Codex'
     )
 
-    expect(names).toEqual(['agent-browser'])
+    expect(names).toEqual(['agent-browser', 'frontend-pack-helper'])
   })
 
   it('supports agent scope filter between global and project', () => {
@@ -138,7 +153,7 @@ describe('skill filter core', () => {
     })
 
     expect(globalNames).toEqual(['agent-browser', 'docs-tool'])
-    expect(projectNames).toEqual(['agent-browser', 'deploy-helper'])
+    expect(projectNames).toEqual(['agent-browser', 'deploy-helper', 'frontend-pack-helper'])
   })
 
   it('applies search together with tag filters', () => {
@@ -153,5 +168,15 @@ describe('skill filter core', () => {
     )
 
     expect(names).toEqual(['skill-installer'])
+  })
+
+  it('keeps disabled project skills visible so they can be re-enabled', () => {
+    const names = filterNames({
+      currentView: 'project',
+      currentId: '/workspace/repo-a',
+      agentScope: 'all',
+    })
+
+    expect(names).toContain('frontend-pack-helper')
   })
 })

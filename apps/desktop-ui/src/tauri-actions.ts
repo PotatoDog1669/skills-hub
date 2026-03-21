@@ -679,6 +679,35 @@ export async function actionDeleteSkill(path: string) {
   await refreshSkillState()
 }
 
+export async function actionSetProjectSkillEnabled(path: string, enabled: boolean) {
+  if (!isTauriRuntime()) {
+    throw new Error('Tauri runtime is required.')
+  }
+
+  await invokeCommand<string>('project_skill_set_enabled', { path, enabled })
+  await refreshSkillState()
+}
+
+export async function actionSetProjectSkillPackageEnabled(values: {
+  projectPath: string
+  enabled: boolean
+  packageId?: string
+  packageName?: string
+}) {
+  if (!isTauriRuntime()) {
+    throw new Error('Tauri runtime is required.')
+  }
+
+  const changedCount = await invokeCommand<number>('project_skill_package_set_enabled', {
+    projectPath: values.projectPath,
+    enabled: values.enabled,
+    packageId: values.packageId,
+    packageName: values.packageName,
+  })
+  await refreshSkillState()
+  return changedCount
+}
+
 export async function actionKitRestoreManagedBaseline(id: string) {
   if (!isTauriRuntime()) {
     throw new Error('Tauri runtime is required.')

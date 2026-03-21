@@ -120,6 +120,13 @@ struct Skill {
   location: SkillLocation,
   agent_name: Option<String>,
   project_name: Option<String>,
+  project_path: Option<String>,
+  #[serde(default = "default_true")]
+  enabled: bool,
+  source_package_id: Option<String>,
+  source_package_name: Option<String>,
+  source_kit_id: Option<String>,
+  source_kit_name: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -588,8 +595,18 @@ impl SharedState {
   }
 
   fn refresh_skills_from_disk(&self) -> Result<bool, String> {
-    let config = self.clone_config()?;
-    let next_skills = collect_all_skills(&config);
+    let (config, loadouts, kits) = {
+      let guard = self
+        .state
+        .lock()
+        .map_err(|_| "state lock poisoned".to_string())?;
+      (
+        guard.config.clone(),
+        guard.kit_loadouts.clone(),
+        guard.kits.clone(),
+      )
+    };
+    let next_skills = collect_all_skills(&config, &loadouts, &kits);
 
     let mut guard = self
       .state
@@ -635,6 +652,10 @@ fn now_millis() -> i64 {
     .duration_since(UNIX_EPOCH)
     .map(|duration| duration.as_millis() as i64)
     .unwrap_or(0)
+}
+
+fn default_true() -> bool {
+  true
 }
 
 fn normalize_path(raw: &str) -> String {
@@ -821,6 +842,25 @@ fn optional_trim(value: Option<String>) -> Option<String> {
       Some(trimmed)
     }
   })
+}
+
+#[derive(Clone, Debug, Default)]
+struct SkillSummary {
+  name: String,
+  description: String,
+  project_relative_path: Option<String>,
+  source_package_id: Option<String>,
+  source_package_name: Option<String>,
+  source_kit_id: Option<String>,
+  source_kit_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct SkillProvenance {
+  source_package_id: Option<String>,
+  source_package_name: Option<String>,
+  source_kit_id: Option<String>,
+  source_kit_name: Option<String>,
 }
 
 fn official_preset_catalog() -> Result<OfficialPresetCatalog, String> {
@@ -1901,31 +1941,112 @@ fn infer_description(markdown: &str) -> String {
   String::new()
 }
 
-fn parse_skill_summary(skill_dir: &Path) -> (String, String) {
+fn skill_document_path(skill_dir: &Path) -> PathBuf {
+  skill_dir.join("SKILL.md")
+}
+
+fn read_skill_document_from_dir(skill_dir: &Path) -> Result<SkillDocument, String> {
+  let skill_md_path = skill_document_path(skill_dir);
+  let raw = fs::read_to_string(&skill_md_path)
+    .map_err(|error| format!("Failed to read {}: {}", skill_md_path.display(), error))?;
+  Ok(parse_skill_document(&raw))
+}
+
+fn write_skill_document_to_dir(skill_dir: &Path, document: &SkillDocument) -> Result<(), String> {
+  let skill_md_path = skill_document_path(skill_dir);
+  let next_raw = if document.metadata.is_empty() {
+    document.content.clone()
+  } else {
+    let frontmatter = serde_yaml::to_string(&document.metadata)
+      .map_err(|error| format!("Failed to encode frontmatter: {}", error))?;
+    format!("---\n{}---\n{}", frontmatter, document.content)
+  };
+
+  fs::write(&skill_md_path, next_raw)
+    .map_err(|error| format!("Failed to write {}: {}", skill_md_path.display(), error))
+}
+
+fn update_skill_metadata(
+  skill_dir: &Path,
+  updates: Vec<(String, Option<String>)>,
+) -> Result<(), String> {
+  let skill_md_path = skill_document_path(skill_dir);
+  if !skill_md_path.exists() {
+    return Ok(());
+  }
+
+  let mut document = read_skill_document_from_dir(skill_dir)?;
+  for (key, value) in updates.into_iter() {
+    if let Some(value) = optional_trim(Some(value).flatten()) {
+      document.metadata.insert(key, value);
+    } else {
+      document.metadata.remove(&key);
+    }
+  }
+
+  write_skill_document_to_dir(skill_dir, &document)
+}
+
+fn parse_skill_summary(skill_dir: &Path) -> SkillSummary {
   let fallback_name = path_tail(skill_dir.to_string_lossy().as_ref());
-  let skill_md_path = skill_dir.join("SKILL.md");
-  let content = match fs::read_to_string(skill_md_path) {
-    Ok(content) => content,
+  let document = match read_skill_document_from_dir(skill_dir) {
+    Ok(document) => document,
     Err(_) => {
-      return (fallback_name, "Error parsing SKILL.md".to_string());
+      return SkillSummary {
+        name: fallback_name,
+        description: "Error parsing SKILL.md".to_string(),
+        ..SkillSummary::default()
+      };
     }
   };
 
-  let parsed = parse_skill_document(&content);
-  let name = parsed
+  let name = document
     .metadata
     .get("name")
     .cloned()
     .filter(|entry| !entry.trim().is_empty())
     .unwrap_or_else(|| fallback_name.clone());
-  let description = parsed
+  let description = document
     .metadata
     .get("description")
     .cloned()
     .filter(|entry| !entry.trim().is_empty())
-    .unwrap_or_else(|| infer_description(&parsed.content));
+    .unwrap_or_else(|| infer_description(&document.content));
 
-  (name, description.chars().take(200).collect())
+  SkillSummary {
+    name,
+    description: description.chars().take(200).collect(),
+    project_relative_path: optional_trim(
+      document
+        .metadata
+        .get("skills_hub_project_relative_path")
+        .cloned(),
+    ),
+    source_package_id: optional_trim(
+      document
+        .metadata
+        .get("skills_hub_source_package_id")
+        .cloned(),
+    ),
+    source_package_name: optional_trim(
+      document
+        .metadata
+        .get("skills_hub_source_package_name")
+        .cloned(),
+    ),
+    source_kit_id: optional_trim(
+      document
+        .metadata
+        .get("skills_hub_source_kit_id")
+        .cloned(),
+    ),
+    source_kit_name: optional_trim(
+      document
+        .metadata
+        .get("skills_hub_source_kit_name")
+        .cloned(),
+    ),
+  }
 }
 
 fn should_skip_skill_scan_dir(name: &str) -> bool {
@@ -1984,6 +2105,69 @@ fn collect_skill_dirs(base_path: &Path) -> Vec<PathBuf> {
   result
 }
 
+fn project_disabled_skill_root(project_path: &str) -> PathBuf {
+  Path::new(project_path)
+    .join(".skills-hub")
+    .join("disabled-skills")
+}
+
+fn project_disabled_skill_agent_root(project_path: &str, agent_name: &str) -> PathBuf {
+  project_disabled_skill_root(project_path).join(agent_name)
+}
+
+fn build_project_skill_provenance_map(
+  config: &AppConfig,
+  loadouts: &[KitLoadoutRecord],
+  kits: &[KitRecord],
+) -> HashMap<String, SkillProvenance> {
+  let loadouts_by_id = loadouts
+    .iter()
+    .map(|loadout| (loadout.id.as_str(), loadout))
+    .collect::<HashMap<_, _>>();
+  let agents_by_name = config
+    .agents
+    .iter()
+    .map(|agent| (agent.name.as_str(), agent))
+    .collect::<HashMap<_, _>>();
+
+  let mut applied_kits = kits
+    .iter()
+    .filter(|kit| kit.loadout_id.is_some() && kit.last_applied_target.is_some())
+    .collect::<Vec<_>>();
+  applied_kits.sort_by(|left, right| right.last_applied_at.unwrap_or(0).cmp(&left.last_applied_at.unwrap_or(0)));
+
+  let mut result = HashMap::new();
+  for kit in applied_kits.into_iter() {
+    let Some(loadout_id) = kit.loadout_id.as_deref() else {
+      continue;
+    };
+    let Some(loadout) = loadouts_by_id.get(loadout_id) else {
+      continue;
+    };
+    let Some(target) = kit.last_applied_target.as_ref() else {
+      continue;
+    };
+    let Some(agent) = agents_by_name.get(target.agent_name.as_str()) else {
+      continue;
+    };
+
+    for item in loadout.items.iter() {
+      for parent in project_skill_parent_candidates(&target.project_path, agent) {
+        let destination = parent.join(path_tail(&item.skill_path));
+        let normalized_destination = normalize_path(destination.to_string_lossy().as_ref());
+        result.entry(normalized_destination).or_insert_with(|| SkillProvenance {
+          source_package_id: Some(loadout.id.clone()),
+          source_package_name: Some(loadout.name.clone()),
+          source_kit_id: Some(kit.id.clone()),
+          source_kit_name: Some(kit.name.clone()),
+        });
+      }
+    }
+  }
+
+  result
+}
+
 fn resolve_skill_watch_target(skill_root: &Path) -> Option<SkillWatchTarget> {
   let mut current = skill_root.to_path_buf();
   let mut recursive_mode = RecursiveMode::Recursive;
@@ -2033,6 +2217,7 @@ fn skill_watch_targets(config: &AppConfig) -> Vec<SkillWatchTarget> {
   for project_path in config.projects.iter() {
     for agent in active_agents.iter() {
       candidates.extend(project_skill_parent_candidates(project_path, agent));
+      candidates.push(project_disabled_skill_agent_root(project_path, &agent.name));
     }
   }
 
@@ -2057,44 +2242,62 @@ fn skill_watch_targets(config: &AppConfig) -> Vec<SkillWatchTarget> {
   result
 }
 
-fn collect_all_skills(config: &AppConfig) -> Vec<Skill> {
+fn collect_all_skills(
+  config: &AppConfig,
+  loadouts: &[KitLoadoutRecord],
+  kits: &[KitRecord],
+) -> Vec<Skill> {
   let active_agents = config
     .agents
     .iter()
     .filter(|agent| agent.enabled)
     .collect::<Vec<_>>();
+  let inferred_provenance = build_project_skill_provenance_map(config, loadouts, kits);
   let mut seen = HashSet::new();
   let mut skills = Vec::new();
 
   let mut push_skill = |path: PathBuf,
                         location: SkillLocation,
                         agent_name: Option<String>,
-                        project_name: Option<String>| {
+                        project_name: Option<String>,
+                        project_path: Option<String>,
+                        enabled: bool| {
     let normalized_path = normalize_path(path.to_string_lossy().as_ref());
     if seen.contains(&normalized_path) {
       return;
     }
 
-    let (name, description) = parse_skill_summary(Path::new(&normalized_path));
+    let summary = parse_skill_summary(Path::new(&normalized_path));
+    let inferred = if location == SkillLocation::Project {
+      inferred_provenance.get(&normalized_path).cloned().unwrap_or_default()
+    } else {
+      SkillProvenance::default()
+    };
     skills.push(Skill {
       id: normalized_path.clone(),
-      name,
-      description,
+      name: summary.name,
+      description: summary.description,
       path: normalized_path.clone(),
       location,
       agent_name,
       project_name,
+      project_path,
+      enabled,
+      source_package_id: summary.source_package_id.or(inferred.source_package_id),
+      source_package_name: summary.source_package_name.or(inferred.source_package_name),
+      source_kit_id: summary.source_kit_id.or(inferred.source_kit_id),
+      source_kit_name: summary.source_kit_name.or(inferred.source_kit_name),
     });
     seen.insert(normalized_path);
   };
 
   for path in collect_skill_dirs(Path::new(&config.hub_path)) {
-    push_skill(path, SkillLocation::Hub, None, None);
+    push_skill(path, SkillLocation::Hub, None, None, None, true);
   }
 
   for agent in active_agents.iter() {
     for path in collect_skill_dirs(Path::new(&agent.global_path)) {
-      push_skill(path, SkillLocation::Agent, Some(agent.name.clone()), None);
+      push_skill(path, SkillLocation::Agent, Some(agent.name.clone()), None, None, true);
     }
   }
 
@@ -2108,14 +2311,173 @@ fn collect_all_skills(config: &AppConfig) -> Vec<Skill> {
             SkillLocation::Project,
             Some(agent.name.clone()),
             Some(project_name.clone()),
+            Some(project_path.clone()),
+            true,
           );
         }
+      }
+
+      let disabled_root = project_disabled_skill_agent_root(project_path, &agent.name);
+      for path in collect_skill_dirs(&disabled_root) {
+        push_skill(
+          path,
+          SkillLocation::Project,
+          Some(agent.name.clone()),
+          Some(project_name.clone()),
+          Some(project_path.clone()),
+          false,
+        );
       }
     }
   }
 
   skills.sort_by(|left, right| left.path.cmp(&right.path));
   skills
+}
+
+fn resolve_project_skill_restore_relative_path(
+  skill: &Skill,
+  config: &AppConfig,
+  skill_dir: &Path,
+) -> String {
+  let summary = parse_skill_summary(skill_dir);
+  if let Some(relative_path) = summary.project_relative_path {
+    return relative_path;
+  }
+
+  let basename = path_tail(skill.path.as_str());
+  if let Some(project_path) = skill.project_path.as_deref() {
+    if let Some(agent_name) = skill.agent_name.as_deref() {
+      if let Some(agent) = config.agents.iter().find(|agent| agent.name == agent_name) {
+        return normalize_relative_path(
+          Path::new(&agent.project_path)
+            .join(&basename)
+            .to_string_lossy()
+            .as_ref(),
+        );
+      }
+    }
+    if let Ok(relative) = Path::new(skill.path.as_str()).strip_prefix(project_path) {
+      return normalize_relative_path(relative.to_string_lossy().as_ref());
+    }
+  }
+
+  basename
+}
+
+fn persist_project_skill_state_metadata(skill: &Skill, skill_dir: &Path) -> Result<(), String> {
+  let relative_path = skill.project_path.as_deref().and_then(|project_path| {
+    Path::new(skill.path.as_str())
+      .strip_prefix(project_path)
+      .ok()
+      .map(|value| normalize_relative_path(value.to_string_lossy().as_ref()))
+  });
+
+  update_skill_metadata(
+    skill_dir,
+    vec![
+      (
+        "skills_hub_project_relative_path".to_string(),
+        relative_path,
+      ),
+      (
+        "skills_hub_source_package_id".to_string(),
+        skill.source_package_id.clone(),
+      ),
+      (
+        "skills_hub_source_package_name".to_string(),
+        skill.source_package_name.clone(),
+      ),
+      ("skills_hub_source_kit_id".to_string(), skill.source_kit_id.clone()),
+      (
+        "skills_hub_source_kit_name".to_string(),
+        skill.source_kit_name.clone(),
+      ),
+    ],
+  )
+}
+
+fn relocate_skill_directory(source_path: &Path, destination_path: &Path) -> Result<(), String> {
+  if let Some(parent) = destination_path.parent() {
+    fs::create_dir_all(parent).map_err(|error| {
+      format!(
+        "Failed to create destination parent {}: {}",
+        parent.display(),
+        error
+      )
+    })?;
+  }
+
+  if path_exists_or_symlink(destination_path) {
+    remove_path_if_exists(destination_path)?;
+  }
+
+  match fs::rename(source_path, destination_path) {
+    Ok(()) => Ok(()),
+    Err(_) => {
+      copy_directory_recursive(source_path, destination_path)?;
+      remove_path_if_exists(source_path)
+    }
+  }
+}
+
+fn set_project_skill_enabled_on_disk(
+  config: &AppConfig,
+  skill: &Skill,
+  enabled: bool,
+) -> Result<String, String> {
+  if skill.location != SkillLocation::Project {
+    return Err("Only project skills can be toggled.".to_string());
+  }
+
+  let project_path = skill
+    .project_path
+    .as_deref()
+    .ok_or_else(|| "Project path is missing for this skill.".to_string())?;
+  let agent_name = skill
+    .agent_name
+    .as_deref()
+    .ok_or_else(|| "Agent name is missing for this skill.".to_string())?;
+  let source_path = PathBuf::from(normalize_path(&skill.path));
+  let basename = path_tail(skill.path.as_str());
+
+  if enabled == skill.enabled {
+    return Ok(normalize_path(source_path.to_string_lossy().as_ref()));
+  }
+
+  let destination = if enabled {
+    let relative_path = resolve_project_skill_restore_relative_path(skill, config, &source_path);
+    Path::new(project_path).join(relative_path)
+  } else {
+    persist_project_skill_state_metadata(skill, &source_path)?;
+    project_disabled_skill_agent_root(project_path, agent_name).join(&basename)
+  };
+
+  let normalized_destination = normalize_path(destination.to_string_lossy().as_ref());
+  if normalize_path(source_path.to_string_lossy().as_ref()) == normalized_destination {
+    return Ok(normalized_destination);
+  }
+
+  relocate_skill_directory(&source_path, &destination)?;
+  Ok(normalized_destination)
+}
+
+fn matches_project_package(
+  skill: &Skill,
+  package_id: Option<&str>,
+  package_name: Option<&str>,
+) -> bool {
+  if let Some(package_id) = package_id {
+    if skill.source_package_id.as_deref() == Some(package_id) {
+      return true;
+    }
+  }
+  if let Some(package_name) = package_name {
+    if skill.source_package_name.as_deref() == Some(package_name) {
+      return true;
+    }
+  }
+  false
 }
 
 fn should_refresh_for_notify_kind(kind: &notify::EventKind) -> bool {
@@ -3141,6 +3503,12 @@ fn seed_state() -> DesktopState {
         location: SkillLocation::Hub,
         agent_name: None,
         project_name: None,
+        project_path: None,
+        enabled: true,
+        source_package_id: None,
+        source_package_name: None,
+        source_kit_id: None,
+        source_kit_name: None,
       },
       Skill {
         id: "skill-installer-hub".to_string(),
@@ -3150,6 +3518,12 @@ fn seed_state() -> DesktopState {
         location: SkillLocation::Hub,
         agent_name: None,
         project_name: None,
+        project_path: None,
+        enabled: true,
+        source_package_id: None,
+        source_package_name: None,
+        source_kit_id: None,
+        source_kit_name: None,
       },
     ],
     providers,
@@ -3178,7 +3552,7 @@ fn ensure_backups_for<'a>(
 }
 
 fn refresh_skills_in_state(state: &mut DesktopState) {
-  state.skills = collect_all_skills(&state.config);
+  state.skills = collect_all_skills(&state.config, &state.kit_loadouts, &state.kits);
 }
 
 fn build_provider_config_for_universal(
@@ -3477,15 +3851,19 @@ fn project_reorder(
 
 #[tauri::command]
 fn skill_list(state: State<SharedState>) -> Result<Vec<Skill>, String> {
-  let config = {
+  let (config, loadouts, kits) = {
     let state_guard = state
       .state
       .lock()
       .map_err(|_| "state lock poisoned".to_string())?;
-    state_guard.config.clone()
+    (
+      state_guard.config.clone(),
+      state_guard.kit_loadouts.clone(),
+      state_guard.kits.clone(),
+    )
   };
 
-  Ok(collect_all_skills(&config))
+  Ok(collect_all_skills(&config, &loadouts, &kits))
 }
 
 #[tauri::command]
@@ -3552,6 +3930,93 @@ fn skill_delete(state: State<SharedState>, path: String) -> Result<bool, String>
   state.persist(&state_guard)?;
 
   Ok(true)
+}
+
+#[tauri::command]
+fn project_skill_set_enabled(
+  state: State<SharedState>,
+  path: String,
+  enabled: bool,
+) -> Result<String, String> {
+  let normalized_path = normalize_path(&path);
+  let (config, skill) = {
+    let state_guard = state
+      .state
+      .lock()
+      .map_err(|_| "state lock poisoned".to_string())?;
+    let skill = state_guard
+      .skills
+      .iter()
+      .find(|skill| skill.path == normalized_path)
+      .cloned()
+      .ok_or_else(|| format!("Skill not found: {}", normalized_path))?;
+    (state_guard.config.clone(), skill)
+  };
+
+  let destination = set_project_skill_enabled_on_disk(&config, &skill, enabled)?;
+
+  let mut state_guard = state
+    .state
+    .lock()
+    .map_err(|_| "state lock poisoned".to_string())?;
+  refresh_skills_in_state(&mut state_guard);
+  state.persist(&state_guard)?;
+  Ok(destination)
+}
+
+#[tauri::command]
+fn project_skill_package_set_enabled(
+  state: State<SharedState>,
+  projectPath: String,
+  enabled: bool,
+  packageId: Option<String>,
+  packageName: Option<String>,
+) -> Result<i64, String> {
+  let normalized_project_path = normalize_path(&projectPath);
+  let trimmed_package_id = optional_trim(packageId);
+  let trimmed_package_name = optional_trim(packageName);
+  if trimmed_package_id.is_none() && trimmed_package_name.is_none() {
+    return Err("A skills package id or name is required.".to_string());
+  }
+
+  let (config, targets) = {
+    let state_guard = state
+      .state
+      .lock()
+      .map_err(|_| "state lock poisoned".to_string())?;
+    let targets = state_guard
+      .skills
+      .iter()
+      .filter(|skill| skill.location == SkillLocation::Project)
+      .filter(|skill| skill.project_path.as_deref() == Some(normalized_project_path.as_str()))
+      .filter(|skill| skill.enabled != enabled)
+      .filter(|skill| {
+        matches_project_package(
+          skill,
+          trimmed_package_id.as_deref(),
+          trimmed_package_name.as_deref(),
+        )
+      })
+      .cloned()
+      .collect::<Vec<_>>();
+    (state_guard.config.clone(), targets)
+  };
+
+  if targets.is_empty() {
+    return Ok(0);
+  }
+
+  for skill in targets.iter() {
+    set_project_skill_enabled_on_disk(&config, skill, enabled)?;
+  }
+
+  let mut state_guard = state
+    .state
+    .lock()
+    .map_err(|_| "state lock poisoned".to_string())?;
+  refresh_skills_in_state(&mut state_guard);
+  state.persist(&state_guard)?;
+  Ok(targets.len() as i64)
 }
 
 #[tauri::command]
@@ -5552,13 +6017,46 @@ fn kit_apply(
       );
 
       match sync_skill_into_parent(&source_path, &destination_parent_path, &effective_mode) {
-        Ok(destination) => loadout_results.push(KitApplySkillResult {
-          skill_path: item.skill_path.clone(),
-          mode: effective_mode,
-          destination,
-          status: ApplyStatus::Success,
-          error: None,
-        }),
+        Ok(destination) => {
+          let destination_path = PathBuf::from(&destination);
+          match update_skill_metadata(
+            &destination_path,
+            vec![
+              (
+                "skills_hub_project_relative_path".to_string(),
+                destination_path
+                  .strip_prefix(&project_path_buffer)
+                  .ok()
+                  .map(|value| normalize_relative_path(value.to_string_lossy().as_ref())),
+              ),
+              (
+                "skills_hub_source_package_id".to_string(),
+                Some(loadout.id.clone()),
+              ),
+              (
+                "skills_hub_source_package_name".to_string(),
+                Some(loadout.name.clone()),
+              ),
+              ("skills_hub_source_kit_id".to_string(), Some(kit.id.clone())),
+              ("skills_hub_source_kit_name".to_string(), Some(kit.name.clone())),
+            ],
+          ) {
+            Ok(()) => loadout_results.push(KitApplySkillResult {
+              skill_path: item.skill_path.clone(),
+              mode: effective_mode,
+              destination,
+              status: ApplyStatus::Success,
+              error: None,
+            }),
+            Err(error) => loadout_results.push(KitApplySkillResult {
+              skill_path: item.skill_path.clone(),
+              mode: effective_mode,
+              destination,
+              status: ApplyStatus::Failed,
+              error: Some(error),
+            }),
+          }
+        }
         Err(error) => loadout_results.push(KitApplySkillResult {
           skill_path: item.skill_path.clone(),
           mode: effective_mode,
@@ -5928,6 +6426,18 @@ mod tests {
       enabled: true,
       is_custom: false,
     }
+  }
+
+  fn write_skill_dir(path: &Path, name: &str, description: &str) {
+    create_dir_all(path).unwrap();
+    std::fs::write(
+      path.join("SKILL.md"),
+      format!(
+        "---\nname: {}\ndescription: {}\n---\n# {}\n\n{}\n",
+        name, description, name, description
+      ),
+    )
+    .unwrap();
   }
 
   fn build_official_source(id: &str, url: &str, selected_skills: &[&str]) -> OfficialPresetSource {
@@ -6478,6 +6988,176 @@ mod tests {
   }
 
   #[test]
+  fn collect_all_skills_infers_project_package_from_applied_kit() {
+    let base = std::env::temp_dir().join(format!("skills-hub-project-origin-{}", now_millis()));
+    let hub_path = base.join("hub");
+    let global_path = base.join("global");
+    let project_path = base.join("repo");
+    let hub_skill_path = hub_path.join("demo-skill");
+    let project_skill_path = project_path.join(".codex/skills/demo-skill");
+    let normalized_project_path = normalize_path(project_path.to_string_lossy().as_ref());
+
+    create_dir_all(&global_path).unwrap();
+    write_skill_dir(&hub_skill_path, "demo-skill", "Demo hub skill");
+    write_skill_dir(&project_skill_path, "demo-skill", "Demo project skill");
+
+    let config = AppConfig {
+      hub_path: normalize_path(hub_path.to_string_lossy().as_ref()),
+      projects: vec![normalized_project_path.clone()],
+      scan_roots: Vec::new(),
+      agents: vec![AgentConfig {
+        name: "Codex".to_string(),
+        global_path: normalize_path(global_path.to_string_lossy().as_ref()),
+        project_path: ".codex/skills".to_string(),
+        instruction_file_name: None,
+        enabled: true,
+        is_custom: false,
+      }],
+    };
+
+    let loadout = KitLoadoutRecord {
+      id: "loadout-frontend".to_string(),
+      name: "Frontend Pack".to_string(),
+      description: None,
+      items: vec![KitLoadoutItem {
+        skill_path: normalize_path(hub_skill_path.to_string_lossy().as_ref()),
+        mode: KitSyncMode::Copy,
+        sort_order: 0,
+      }],
+      import_source: None,
+      created_at: 0,
+      updated_at: 0,
+    };
+    let kit = KitRecord {
+      id: "kit-frontend".to_string(),
+      name: "Frontend Kit".to_string(),
+      description: None,
+      policy_id: None,
+      loadout_id: Some(loadout.id.clone()),
+      managed_source: None,
+      last_applied_at: Some(1),
+      last_applied_target: Some(KitApplyTarget {
+        project_path: normalized_project_path.clone(),
+        agent_name: "Codex".to_string(),
+      }),
+      created_at: 0,
+      updated_at: 0,
+    };
+
+    let skills = collect_all_skills(&config, &vec![loadout], &vec![kit]);
+    let project_skill = skills
+      .iter()
+      .find(|skill| skill.path == normalize_path(project_skill_path.to_string_lossy().as_ref()))
+      .expect("project skill should be collected");
+
+    assert_eq!(project_skill.source_package_id.as_deref(), Some("loadout-frontend"));
+    assert_eq!(project_skill.source_package_name.as_deref(), Some("Frontend Pack"));
+    assert_eq!(project_skill.source_kit_id.as_deref(), Some("kit-frontend"));
+    assert_eq!(project_skill.source_kit_name.as_deref(), Some("Frontend Kit"));
+    assert_eq!(project_skill.project_path.as_deref(), Some(normalized_project_path.as_str()));
+    assert!(project_skill.enabled);
+
+    let _ = remove_dir_all(base);
+  }
+
+  #[test]
+  fn project_skill_toggle_round_trips_between_active_and_disabled_locations() {
+    let base = std::env::temp_dir().join(format!("skills-hub-project-toggle-{}", now_millis()));
+    let hub_path = base.join("hub");
+    let global_path = base.join("global");
+    let project_path = base.join("repo");
+    let hub_skill_path = hub_path.join("demo-skill");
+    let project_skill_path = project_path.join(".codex/skills/demo-skill");
+    let normalized_project_path = normalize_path(project_path.to_string_lossy().as_ref());
+
+    create_dir_all(&global_path).unwrap();
+    write_skill_dir(&hub_skill_path, "demo-skill", "Demo hub skill");
+    write_skill_dir(&project_skill_path, "demo-skill", "Demo project skill");
+
+    let config = AppConfig {
+      hub_path: normalize_path(hub_path.to_string_lossy().as_ref()),
+      projects: vec![normalized_project_path.clone()],
+      scan_roots: Vec::new(),
+      agents: vec![AgentConfig {
+        name: "Codex".to_string(),
+        global_path: normalize_path(global_path.to_string_lossy().as_ref()),
+        project_path: ".codex/skills".to_string(),
+        instruction_file_name: None,
+        enabled: true,
+        is_custom: false,
+      }],
+    };
+
+    let loadout = KitLoadoutRecord {
+      id: "loadout-frontend".to_string(),
+      name: "Frontend Pack".to_string(),
+      description: None,
+      items: vec![KitLoadoutItem {
+        skill_path: normalize_path(hub_skill_path.to_string_lossy().as_ref()),
+        mode: KitSyncMode::Copy,
+        sort_order: 0,
+      }],
+      import_source: None,
+      created_at: 0,
+      updated_at: 0,
+    };
+    let kit = KitRecord {
+      id: "kit-frontend".to_string(),
+      name: "Frontend Kit".to_string(),
+      description: None,
+      policy_id: None,
+      loadout_id: Some(loadout.id.clone()),
+      managed_source: None,
+      last_applied_at: Some(1),
+      last_applied_target: Some(KitApplyTarget {
+        project_path: normalized_project_path,
+        agent_name: "Codex".to_string(),
+      }),
+      created_at: 0,
+      updated_at: 0,
+    };
+
+    let skills = collect_all_skills(&config, &vec![loadout.clone()], &vec![kit.clone()]);
+    let active_skill = skills
+      .iter()
+      .find(|skill| skill.path == normalize_path(project_skill_path.to_string_lossy().as_ref()))
+      .cloned()
+      .expect("active project skill should exist");
+
+    let disabled_destination =
+      set_project_skill_enabled_on_disk(&config, &active_skill, false).unwrap();
+    assert!(Path::new(&disabled_destination).exists());
+    assert!(!project_skill_path.exists());
+
+    let disabled_skills = collect_all_skills(&config, &vec![loadout.clone()], &vec![kit.clone()]);
+    let disabled_skill = disabled_skills
+      .iter()
+      .find(|skill| skill.path == disabled_destination)
+      .cloned()
+      .expect("disabled project skill should be collected");
+    assert!(!disabled_skill.enabled);
+    assert_eq!(disabled_skill.source_package_name.as_deref(), Some("Frontend Pack"));
+
+    let restored_destination =
+      set_project_skill_enabled_on_disk(&config, &disabled_skill, true).unwrap();
+    assert_eq!(
+      restored_destination,
+      normalize_path(project_skill_path.to_string_lossy().as_ref())
+    );
+    assert!(project_skill_path.exists());
+
+    let restored_skills = collect_all_skills(&config, &vec![loadout], &vec![kit]);
+    let restored_skill = restored_skills
+      .iter()
+      .find(|skill| skill.path == normalize_path(project_skill_path.to_string_lossy().as_ref()))
+      .expect("restored project skill should be collected");
+    assert!(restored_skill.enabled);
+    assert_eq!(restored_skill.source_package_name.as_deref(), Some("Frontend Pack"));
+
+    let _ = remove_dir_all(base);
+  }
+
+  #[test]
   fn tray_provider_switch_menu_id_round_trips() {
     let raw_id = tray_provider_switch_menu_id(&AppType::Codex, "provider-codex-api");
     let parsed = parse_tray_provider_switch_menu_id(&raw_id);
@@ -6584,6 +7264,8 @@ fn main() {
       skill_sync,
       skill_collect_to_hub,
       skill_delete,
+      project_skill_set_enabled,
+      project_skill_package_set_enabled,
       agent_config_update,
       agent_reorder,
       agent_config_remove,
