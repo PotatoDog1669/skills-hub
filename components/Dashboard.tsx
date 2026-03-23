@@ -10,7 +10,7 @@ import { SkillDetailView } from './SkillDetailView'
 import { useSearchParams } from '@/apps/desktop-ui/src/shims/navigation'
 import { ImportSkillModal } from './ImportSkillModal'
 import { CreateSkillModal } from './CreateSkillModal'
-import { Download, Plus } from 'lucide-react'
+import { Download, Eye, EyeOff, Package, Plus } from 'lucide-react'
 import Link from '@/apps/desktop-ui/src/shims/link'
 import { ProviderPanel } from './ProviderPanel'
 import type { AppType, ProviderRecord, UniversalProviderRecord } from '@/lib/core/provider-types'
@@ -29,6 +29,7 @@ import {
   filterSkillGroups,
   groupSkillsByName,
 } from '@/lib/core/skill-filter'
+import { actionSetProjectSkillPackageEnabled } from '@/apps/desktop-ui/src/tauri-actions'
 
 interface DashboardProps {
   skills: Skill[]
@@ -40,6 +41,15 @@ interface DashboardProps {
   kitLoadouts: KitLoadoutRecord[]
   kits: KitRecord[]
   officialPresets: OfficialPresetSummary[]
+}
+
+interface ProjectPackageSummary {
+  key: string
+  id?: string
+  name: string
+  totalCount: number
+  enabledCount: number
+  disabledCount: number
 }
 
 function PlaceholderCard({ title, text }: { title: string; text: string }) {
@@ -76,6 +86,7 @@ export function Dashboard({
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedTag, setSelectedTag] = useState(SKILL_TAG_ALL)
   const [agentScope, setAgentScope] = useState<AgentSkillScope>('all')
+  const [pendingProjectPackageKey, setPendingProjectPackageKey] = useState<string | null>(null)
   const shouldEnableTagFilter = currentView !== 'agent' && currentView !== 'hub'
 
   const allGroups = useMemo(() => {
@@ -104,6 +115,48 @@ export function Dashboard({
     })
   }, [allGroups, filterContext, searchQuery, selectedTag, shouldEnableTagFilter])
 
+  const projectPackages = useMemo<ProjectPackageSummary[]>(() => {
+    if (currentView !== 'project' || !currentId) {
+      return []
+    }
+
+    const groupedPackages = new Map<string, ProjectPackageSummary>()
+    for (const skill of skills) {
+      if (skill.location !== 'project' || skill.projectPath !== currentId) {
+        continue
+      }
+
+      const packageId = skill.sourcePackageId?.trim() || undefined
+      const packageName = skill.sourcePackageName?.trim() || packageId || 'Unnamed package'
+      if (!packageId && !skill.sourcePackageName?.trim()) {
+        continue
+      }
+
+      const key = packageId || `name:${packageName}`
+      const existing = groupedPackages.get(key) || {
+        key,
+        id: packageId,
+        name: packageName,
+        totalCount: 0,
+        enabledCount: 0,
+        disabledCount: 0,
+      }
+
+      existing.totalCount += 1
+      if (skill.enabled === false) {
+        existing.disabledCount += 1
+      } else {
+        existing.enabledCount += 1
+      }
+
+      groupedPackages.set(key, existing)
+    }
+
+    return Array.from(groupedPackages.values()).sort((left, right) =>
+      left.name.localeCompare(right.name, undefined, { sensitivity: 'base' })
+    )
+  }, [currentId, currentView, skills])
+
   useEffect(() => {
     if (currentView !== 'agent' && agentScope !== 'all') {
       setAgentScope('all')
@@ -122,6 +175,29 @@ export function Dashboard({
   const handleSync = (skill: Skill) => {
     setSelectedSkill(skill)
     setIsModalOpen(true)
+  }
+
+  const handleProjectPackageEnabledChange = async (
+    projectPackage: ProjectPackageSummary,
+    enabled: boolean
+  ) => {
+    if (currentView !== 'project' || !currentId) {
+      return
+    }
+
+    try {
+      setPendingProjectPackageKey(projectPackage.key)
+      await actionSetProjectSkillPackageEnabled({
+        projectPath: currentId,
+        enabled,
+        packageId: projectPackage.id,
+        packageName: projectPackage.name,
+      })
+    } catch (error) {
+      alert(error instanceof Error ? error.message : `Failed to update skills package: ${String(error)}`)
+    } finally {
+      setPendingProjectPackageKey(null)
+    }
   }
 
   const title =
@@ -269,6 +345,58 @@ export function Dashboard({
         </div>
 
         <div className="flex flex-col gap-3">
+          {currentView === 'project' && projectPackages.length > 0 && (
+            <div className="rounded-xl border border-gray-200 bg-white/90 p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                  <Package size={15} />
+                  <span>Project Packages</span>
+                </div>
+                <span className="text-xs text-gray-500">
+                  {projectPackages.length} packages
+                </span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-3">
+                {projectPackages.map((projectPackage) => {
+                  const isPending = pendingProjectPackageKey === projectPackage.key
+                  return (
+                    <div
+                      key={projectPackage.key}
+                      className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
+                    >
+                      <span className="text-sm font-medium text-gray-900">{projectPackage.name}</span>
+                      <span className="text-xs text-gray-500">
+                        {projectPackage.totalCount} skills
+                      </span>
+                      {projectPackage.enabledCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleProjectPackageEnabledChange(projectPackage, false)}
+                          disabled={isPending}
+                          className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <EyeOff size={12} />
+                          {isPending ? '...' : `Disable ${projectPackage.enabledCount}`}
+                        </button>
+                      )}
+                      {projectPackage.disabledCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleProjectPackageEnabledChange(projectPackage, true)}
+                          disabled={isPending}
+                          className="inline-flex items-center gap-1 rounded-md border border-[#d97757] bg-[#fff7f3] px-2.5 py-1 text-xs font-medium text-[#b4533a] transition-colors hover:bg-[#feefe6] disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <Eye size={12} />
+                          {isPending ? '...' : `Enable ${projectPackage.disabledCount}`}
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
             <input
               type="text"
