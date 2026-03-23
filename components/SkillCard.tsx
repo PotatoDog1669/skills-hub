@@ -21,7 +21,6 @@ import {
   Eye,
 } from 'lucide-react'
 import clsx from 'clsx'
-import type { CSSProperties } from 'react'
 import { useState } from 'react'
 import { useConfirm } from './ConfirmProvider'
 import { DeleteSkillModal } from './DeleteSkillModal'
@@ -52,14 +51,6 @@ interface ActionButtonConfig {
   disabled?: boolean
   onClick: () => void
   icon: typeof Share2
-}
-
-function chunkActions<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = []
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size))
-  }
-  return chunks
 }
 
 export function SkillCard({ unifiedSkill, onSync, viewContext }: SkillCardProps) {
