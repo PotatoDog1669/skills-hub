@@ -18,9 +18,9 @@ Skills Hub supports synchronization with a wide range of AI agents. Below is the
 | **Kiro CLI**       | `~/.kiro/skills`               | `.kiro/skills`             |
 | **Gemini CLI**     | `~/.gemini/skills`             | `.gemini/skills`           |
 | **GitHub Copilot** | `~/.copilot/skills`            | `.github/skills`           |
+| **Windsurf**       | `~/.codeium/windsurf/skills`   | `.windsurf/skills`         |
 | **Trae**           | `~/.trae/skills`               | `.trae/skills`             |
 | **Trae CN**        | `~/.trae-cn/skills`            | `.trae/skills`             |
-| **Windsurf**       | `~/.codeium/windsurf/skills`   | `.windsurf/skills`         |
 | **Qoder**          | `~/.qoder/skills`              | `.qoder/skills`            |
 | **Qwen Code**      | `~/.qwen/skills`               | `.qwen/skills`             |
 

@@ -34,7 +34,7 @@ const content = {
           loadouts from repositories.
         </li>
         <li>
-          Start from bundled recommended Kits, then re-sync or restore their baseline later when
+          Start from bundled curated Kits, then re-sync or restore their baseline later when
           needed.
         </li>
         <li>
@@ -159,7 +159,7 @@ const content = {
         <li>
           支持用指令模板和 skills 包组合 Kit，也支持直接从仓库导入 skills 包。
         </li>
-        <li>支持从内置推荐内容出发生成受管理的 Kit，并在后续重新同步或恢复基线。</li>
+        <li>支持从内置精选内容出发生成受管理的 Kit，并在后续重新同步或恢复基线。</li>
         <li>支持应用级与通用 Provider 管理，包含切换、恢复、抓取当前配置和重新应用。</li>
       </ul>
     ),

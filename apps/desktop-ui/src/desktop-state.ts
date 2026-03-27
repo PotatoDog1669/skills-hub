@@ -10,6 +10,7 @@ import type {
   ProviderRecord,
   UniversalProviderRecord,
 } from '@/lib/core/provider-types';
+import { createBuiltinAgentConfigs } from '@/lib/core/agent-registry';
 import type { AgentConfig, AppConfig } from '@/lib/config';
 import type { Skill } from '@/lib/skills-types';
 
@@ -53,144 +54,7 @@ export type DashboardSnapshot = {
   officialPresets: OfficialPresetSummary[];
 };
 
-const BUILTIN_AGENTS: AgentConfig[] = [
-  {
-    name: 'Antigravity',
-    globalPath: '/Users/leo/.gemini/antigravity/skills',
-    projectPath: '.agent/skills',
-    instructionFileName: 'AGENTS.md',
-    enabled: true,
-    isCustom: false,
-  },
-  {
-    name: 'Claude Code',
-    globalPath: '/Users/leo/.claude/skills',
-    projectPath: '.claude/skills',
-    instructionFileName: 'CLAUDE.md',
-    enabled: true,
-    isCustom: false,
-  },
-  {
-    name: 'Cursor',
-    globalPath: '/Users/leo/.cursor/skills',
-    projectPath: '.cursor/skills',
-    instructionFileName: 'AGENTS.md',
-    enabled: true,
-    isCustom: false,
-  },
-  {
-    name: 'OpenClaw',
-    globalPath: '/Users/leo/.openclaw/skills',
-    projectPath: 'skills',
-    instructionFileName: 'AGENTS.md',
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'CodeBuddy',
-    globalPath: '/Users/leo/.codebuddy/skills',
-    projectPath: '.codebuddy/skills',
-    instructionFileName: 'AGENTS.md',
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'OpenCode',
-    globalPath: '/Users/leo/.config/opencode/skills',
-    projectPath: '.agents/skills',
-    instructionFileName: 'AGENTS.md',
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Codex',
-    globalPath: '/Users/leo/.codex/skills',
-    projectPath: '.codex/skills',
-    instructionFileName: 'AGENTS.md',
-    enabled: true,
-    isCustom: false,
-  },
-  {
-    name: 'Kimi Code CLI',
-    globalPath: '/Users/leo/.config/agents/skills',
-    projectPath: '.agents/skills',
-    instructionFileName: 'AGENTS.md',
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Kilo Code',
-    globalPath: '/Users/leo/.kilocode/skills',
-    projectPath: '.kilocode/skills',
-    instructionFileName: 'AGENTS.md',
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Kiro CLI',
-    globalPath: '/Users/leo/.kiro/skills',
-    projectPath: '.kiro/skills',
-    instructionFileName: 'AGENTS.md',
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Gemini CLI',
-    globalPath: '/Users/leo/.gemini/skills',
-    projectPath: '.gemini/skills',
-    instructionFileName: 'AGENTS.md',
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'GitHub Copilot',
-    globalPath: '/Users/leo/.copilot/skills',
-    projectPath: '.github/skills',
-    instructionFileName: 'AGENTS.md',
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Windsurf',
-    globalPath: '/Users/leo/.codeium/windsurf/skills',
-    projectPath: '.windsurf/skills',
-    instructionFileName: 'AGENTS.md',
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Trae',
-    globalPath: '/Users/leo/.trae/skills',
-    projectPath: '.trae/skills',
-    instructionFileName: 'AGENTS.md',
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Trae CN',
-    globalPath: '/Users/leo/.trae-cn/skills',
-    projectPath: '.trae/skills',
-    instructionFileName: 'AGENTS.md',
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Qoder',
-    globalPath: '/Users/leo/.qoder/skills',
-    projectPath: '.qoder/skills',
-    instructionFileName: 'AGENTS.md',
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Qwen Code',
-    globalPath: '/Users/leo/.qwen/skills',
-    projectPath: '.qwen/skills',
-    instructionFileName: 'AGENTS.md',
-    enabled: false,
-    isCustom: false,
-  },
-];
+const BUILTIN_AGENTS: AgentConfig[] = createBuiltinAgentConfigs('/Users/leo');
 
 function now() {
   return Date.now();

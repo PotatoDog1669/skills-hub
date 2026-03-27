@@ -110,6 +110,16 @@ struct AppConfig {
   agents: Vec<AgentConfig>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BuiltinAgentDefinition {
+  name: String,
+  global_path_relative: String,
+  project_path: String,
+  instruction_file_name: Option<String>,
+  enabled: bool,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 struct Skill {
@@ -139,6 +149,14 @@ struct ProviderRecord {
   is_current: bool,
   created_at: i64,
   updated_at: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CodexOfficialLoginStatus {
+  ready: bool,
+  account_id: Option<String>,
+  message: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -401,6 +419,8 @@ struct OfficialPresetSkillDetail {
 #[serde(rename_all = "camelCase")]
 struct OfficialPresetRecord {
   id: String,
+  #[serde(default)]
+  auto_install: bool,
   name: String,
   description: Option<String>,
   policy: OfficialPresetPolicy,
@@ -483,6 +503,8 @@ struct DesktopState {
   kit_policies: Vec<KitPolicyRecord>,
   kit_loadouts: Vec<KitLoadoutRecord>,
   kits: Vec<KitRecord>,
+  #[serde(default)]
+  dismissed_official_preset_ids: Vec<String>,
   provider_backups: HashMap<String, Vec<ProviderBackupEntry>>,
   skill_documents: HashMap<String, SkillDocument>,
   agents_md_applied: HashMap<String, bool>,
@@ -897,32 +919,17 @@ fn official_policy_template_content(template: &str) -> Result<&'static str, Stri
     "policies/policy-web-frontend.md" => Ok(include_str!(
       "../../data/official-presets/policies/policy-web-frontend.md"
     )),
+    "policies/policy-impeccable-ui-foundations.md" => Ok(include_str!(
+      "../../data/official-presets/policies/policy-impeccable-ui-foundations.md"
+    )),
+    "policies/policy-impeccable-ui-advanced.md" => Ok(include_str!(
+      "../../data/official-presets/policies/policy-impeccable-ui-advanced.md"
+    )),
     "policies/policy-python-api.md" => Ok(include_str!(
       "../../data/official-presets/policies/policy-python-api.md"
     )),
     "policies/policy-langchain-apps.md" => Ok(include_str!(
       "../../data/official-presets/policies/policy-langchain-apps.md"
-    )),
-    "policies/policy-hf-ml.md" => Ok(include_str!(
-      "../../data/official-presets/policies/policy-hf-ml.md"
-    )),
-    "policies/policy-literature-review.md" => Ok(include_str!(
-      "../../data/official-presets/policies/policy-literature-review.md"
-    )),
-    "policies/policy-scientific-discovery.md" => Ok(include_str!(
-      "../../data/official-presets/policies/policy-scientific-discovery.md"
-    )),
-    "policies/policy-security-audit.md" => Ok(include_str!(
-      "../../data/official-presets/policies/policy-security-audit.md"
-    )),
-    "policies/policy-release-ci.md" => Ok(include_str!(
-      "../../data/official-presets/policies/policy-release-ci.md"
-    )),
-    "policies/policy-cloudflare-edge.md" => Ok(include_str!(
-      "../../data/official-presets/policies/policy-cloudflare-edge.md"
-    )),
-    "policies/policy-azure-cloud.md" => Ok(include_str!(
-      "../../data/official-presets/policies/policy-azure-cloud.md"
     )),
     _ => Err(format!("Unsupported official policy template: {}", template)),
   }
@@ -1085,14 +1092,59 @@ fn official_preset_skill_count(preset: &OfficialPresetRecord) -> i64 {
     .sum()
 }
 
-fn managed_official_presets_need_install(state: &SharedState) -> Result<bool, String> {
+fn remember_dismissed_official_preset(state: &mut DesktopState, kit: &KitRecord) -> bool {
+  let Some(managed_source) = kit.managed_source.as_ref() else {
+    return false;
+  };
+
+  if managed_source.kind != "official_preset" || managed_source.preset_id.trim().is_empty() {
+    return false;
+  }
+
+  if state
+    .dismissed_official_preset_ids
+    .iter()
+    .any(|preset_id| preset_id == &managed_source.preset_id)
+  {
+    return false;
+  }
+
+  state
+    .dismissed_official_preset_ids
+    .push(managed_source.preset_id.clone());
+  true
+}
+
+fn clear_dismissed_official_preset(state: &mut DesktopState, preset_id: &str) -> bool {
+  let before = state.dismissed_official_preset_ids.len();
+  state
+    .dismissed_official_preset_ids
+    .retain(|entry| entry != preset_id);
+  before != state.dismissed_official_preset_ids.len()
+}
+
+fn missing_managed_official_preset_ids(state: &SharedState) -> Result<Vec<String>, String> {
   let catalog = official_preset_catalog()?;
   let state_guard = state
     .state
     .lock()
     .map_err(|_| "state lock poisoned".to_string())?;
+  let dismissed = state_guard
+    .dismissed_official_preset_ids
+    .iter()
+    .cloned()
+    .collect::<HashSet<_>>();
+  let mut missing = Vec::new();
 
   for preset in catalog.presets.iter() {
+    if !preset.auto_install {
+      continue;
+    }
+
+    if dismissed.contains(&preset.id) {
+      continue;
+    }
+
     let has_current = state_guard.kits.iter().any(|kit| {
       kit.managed_source
         .as_ref()
@@ -1105,11 +1157,15 @@ fn managed_official_presets_need_install(state: &SharedState) -> Result<bool, St
     });
 
     if !has_current {
-      return Ok(true);
+      missing.push(preset.id.clone());
     }
   }
 
-  Ok(false)
+  Ok(missing)
+}
+
+fn managed_official_presets_need_install(state: &SharedState) -> Result<bool, String> {
+  Ok(!missing_managed_official_preset_ids(state)?.is_empty())
 }
 
 fn official_preset_to_summary(preset: &OfficialPresetRecord) -> OfficialPresetSummary {
@@ -1205,6 +1261,36 @@ fn profile_universal_id(provider: &ProviderRecord) -> Option<String> {
     .and_then(|profile| profile.get("universalId"))
     .and_then(|id| id.as_str())
     .map(|id| id.to_string())
+}
+
+fn provider_profile_kind(config: &Value) -> Option<String> {
+  config
+    .get("_profile")
+    .and_then(|profile| profile.get("kind"))
+    .and_then(|kind| kind.as_str())
+    .map(|kind| kind.to_string())
+}
+
+fn set_codex_account_id_on_profile(config: &mut Value) {
+  let account_id = codex_account_id_from_config(config);
+  let Some(config_obj) = config.as_object_mut() else {
+    return;
+  };
+  let Some(profile) = config_obj.get_mut("_profile") else {
+    return;
+  };
+  let Some(profile_obj) = profile.as_object_mut() else {
+    return;
+  };
+
+  match account_id {
+    Some(account_id) => {
+      profile_obj.insert("accountId".to_string(), Value::String(account_id));
+    }
+    None => {
+      profile_obj.remove("accountId");
+    }
+  }
 }
 
 fn home_dir_path() -> Option<PathBuf> {
@@ -1370,6 +1456,24 @@ fn write_text_file(path: &Path, content: &str) -> Result<(), String> {
   Ok(())
 }
 
+fn read_json_file_if_exists(path: &Path) -> Result<Option<Value>, String> {
+  match fs::read_to_string(path) {
+    Ok(content) => serde_json::from_str::<Value>(&content)
+      .map(Some)
+      .map_err(|error| format!("Failed to parse JSON file {}: {}", path.display(), error)),
+    Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+    Err(error) => Err(format!("Failed to read JSON file {}: {}", path.display(), error)),
+  }
+}
+
+fn read_text_file_if_exists(path: &Path) -> Result<Option<String>, String> {
+  match fs::read_to_string(path) {
+    Ok(content) => Ok(Some(content)),
+    Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+    Err(error) => Err(format!("Failed to read file {}: {}", path.display(), error)),
+  }
+}
+
 fn parse_env_text(raw: &str) -> Map<String, Value> {
   let mut result = Map::new();
   for line in raw.lines() {
@@ -1511,6 +1615,216 @@ fn extract_codex_config_text(config_value: &Value) -> Option<String> {
         .and_then(|value| value.as_str())
         .map(|value| value.to_string())
     })
+}
+
+fn codex_provider_snapshot_dir(provider_id: &str) -> PathBuf {
+  home_relative_path(&format!(".skills-hub/provider-snapshots/codex/{}", provider_id))
+}
+
+fn codex_provider_auth_snapshot_path(provider_id: &str) -> PathBuf {
+  codex_provider_snapshot_dir(provider_id).join("auth.json")
+}
+
+fn codex_provider_config_snapshot_path(provider_id: &str) -> PathBuf {
+  codex_provider_snapshot_dir(provider_id).join("config.toml")
+}
+
+fn legacy_codex_provider_auth_snapshot_path(provider_id: &str) -> PathBuf {
+  home_relative_path(&format!(".skills-hub/provider-auth/codex/{}/auth.json", provider_id))
+}
+
+fn write_codex_provider_snapshot(provider_id: &str, provider_config: &Value) -> Result<(), String> {
+  if provider_id.trim().is_empty() {
+    return Ok(());
+  }
+
+  if let Some(auth) = normalize_codex_auth(provider_config.get("auth")) {
+    write_json_file(
+      &codex_provider_auth_snapshot_path(provider_id),
+      &Value::Object(auth),
+    )?;
+  }
+
+  if let Some(config_text) = extract_codex_config_text(provider_config) {
+    write_text_file(&codex_provider_config_snapshot_path(provider_id), &config_text)?;
+  }
+
+  Ok(())
+}
+
+fn read_codex_provider_snapshot(provider_id: &str, fallback_config: &Value) -> Result<Value, String> {
+  let snapshot_auth = match read_json_file_if_exists(&codex_provider_auth_snapshot_path(provider_id))? {
+    Some(value) => Some(value),
+    None => read_json_file_if_exists(&legacy_codex_provider_auth_snapshot_path(provider_id))?,
+  };
+  let config_path = codex_provider_config_snapshot_path(provider_id);
+  let has_config_snapshot = path_exists_or_symlink(&config_path);
+  let snapshot_config = if has_config_snapshot {
+    read_text_file_if_exists(&config_path)?
+  } else {
+    None
+  };
+
+  let fallback_auth = normalize_codex_auth(fallback_config.get("auth"));
+  let fallback_config_text = extract_codex_config_text(fallback_config);
+  let mut merged = Map::new();
+
+  if let Some(auth) = snapshot_auth
+    .as_ref()
+    .and_then(|value| value.as_object())
+    .cloned()
+    .or(fallback_auth)
+  {
+    merged.insert("auth".to_string(), Value::Object(auth));
+  }
+
+  if has_config_snapshot || fallback_config_text.is_some() {
+    merged.insert(
+      "config".to_string(),
+      Value::String(snapshot_config.unwrap_or_else(|| fallback_config_text.unwrap_or_default())),
+    );
+  }
+
+  Ok(Value::Object(merged))
+}
+
+fn remove_codex_provider_snapshot(provider_id: &str) -> Result<(), String> {
+  if provider_id.trim().is_empty() {
+    return Ok(());
+  }
+
+  remove_path_if_exists(&codex_provider_snapshot_dir(provider_id))?;
+  remove_path_if_exists(&legacy_codex_provider_auth_snapshot_path(provider_id))?;
+  Ok(())
+}
+
+fn hydrate_provider_record(provider: &ProviderRecord) -> Result<ProviderRecord, String> {
+  if provider.app_type != AppType::Codex {
+    return Ok(provider.clone());
+  }
+
+  let hydrated_config = preserve_provider_profile(
+    &read_codex_provider_snapshot(&provider.id, &provider.config)?,
+    &provider.config,
+  );
+
+  let mut hydrated = provider.clone();
+  hydrated.config = hydrated_config;
+  Ok(hydrated)
+}
+
+fn codex_account_id_from_config(config: &Value) -> Option<String> {
+  config
+    .get("auth")
+    .and_then(|value| value.as_object())
+    .and_then(|auth| auth.get("tokens"))
+    .and_then(|value| value.as_object())
+    .and_then(|tokens| tokens.get("account_id"))
+    .and_then(|value| value.as_str())
+    .map(|value| value.to_string())
+}
+
+fn codex_official_login_status_from_config(config: &Value) -> CodexOfficialLoginStatus {
+  let auth = config.get("auth").and_then(|value| value.as_object());
+  let account_id = codex_account_id_from_config(config);
+  let has_chatgpt_auth = auth
+    .and_then(|auth| auth.get("auth_mode"))
+    .and_then(|value| value.as_str())
+    == Some("chatgpt")
+    || auth
+      .and_then(|auth| auth.get("tokens"))
+      .and_then(|value| value.as_object())
+      .is_some();
+  let has_api_key = auth
+    .and_then(|auth| auth.get("OPENAI_API_KEY"))
+    .and_then(|value| value.as_str())
+    .map(|value| !value.trim().is_empty())
+    .unwrap_or(false)
+    || auth
+      .and_then(|auth| auth.get("api_key"))
+      .and_then(|value| value.as_str())
+      .map(|value| !value.trim().is_empty())
+      .unwrap_or(false);
+
+  if has_chatgpt_auth {
+    return CodexOfficialLoginStatus {
+      ready: true,
+      account_id,
+      message: "已检测到 Codex 官方登录态，可以直接保存当前账号。".to_string(),
+    };
+  }
+
+  if has_api_key {
+    return CodexOfficialLoginStatus {
+      ready: false,
+      account_id,
+      message: "当前仍是 API Key 模式，请先在终端完成 codex logout / codex login。".to_string(),
+    };
+  }
+
+  CodexOfficialLoginStatus {
+    ready: false,
+    account_id,
+    message: "尚未检测到 Codex 官方登录态，请先在终端完成 codex logout / codex login。".to_string(),
+  }
+}
+
+fn capture_provider_from_live_record(
+  state: &SharedState,
+  app_type: AppType,
+  name: String,
+  profile: Option<Value>,
+) -> Result<ProviderRecord, String> {
+  let live_config = read_live_provider_config(&app_type)?;
+  let mut config_obj = match sanitize_official_capture_config(&app_type, &live_config) {
+    Value::Object(config_map) => config_map,
+    _ => Map::new(),
+  };
+
+  let mut profile_obj = Map::new();
+  profile_obj.insert("kind".to_string(), Value::String("official".to_string()));
+
+  if let Some(Value::Object(profile_map)) = profile {
+    for (key, value) in profile_map.into_iter() {
+      profile_obj.insert(key, value);
+    }
+  }
+
+  if app_type == AppType::Codex {
+    if let Some(account_id) = codex_account_id_from_config(&Value::Object(config_obj.clone())) {
+      profile_obj.insert("accountId".to_string(), Value::String(account_id));
+    }
+  }
+
+  profile_obj.insert("kind".to_string(), Value::String("official".to_string()));
+  config_obj.insert("_profile".to_string(), Value::Object(profile_obj));
+  let default_name = format!("{} official", app_type.as_str());
+
+  let provider = ProviderRecord {
+    id: state.next_id(&format!("provider-{}-official", app_type.as_str())),
+    app_type,
+    name: if name.trim().is_empty() {
+      default_name
+    } else {
+      name.trim().to_string()
+    },
+    config: Value::Object(config_obj),
+    is_current: false,
+    created_at: now_millis(),
+    updated_at: now_millis(),
+  };
+
+  if provider.app_type == AppType::Codex {
+    write_codex_provider_snapshot(&provider.id, &provider.config)?;
+  }
+
+  let mut state_guard = state
+    .state
+    .lock()
+    .map_err(|_| "state lock poisoned".to_string())?;
+  state_guard.providers.push(provider.clone());
+  state.persist(&state_guard)?;
+  Ok(provider)
 }
 
 fn merge_live_config(app_type: &AppType, live_config: &Value, provider_config: &Value) -> Value {
@@ -3156,144 +3470,21 @@ fn make_temp_directory(prefix: &str) -> Result<PathBuf, String> {
 }
 
 fn default_agents() -> Vec<AgentConfig> {
-  vec![
-    AgentConfig {
-      name: "Antigravity".to_string(),
-      global_path: join_home_path(".gemini/antigravity/skills"),
-      project_path: ".agent/skills".to_string(),
-      instruction_file_name: Some("AGENTS.md".to_string()),
-      enabled: true,
+  let raw = include_str!("../../data/builtin-agents.json");
+  let definitions: Vec<BuiltinAgentDefinition> =
+    serde_json::from_str(raw).expect("builtin-agents.json must be valid");
+
+  definitions
+    .into_iter()
+    .map(|definition| AgentConfig {
+      name: definition.name,
+      global_path: join_home_path(&definition.global_path_relative),
+      project_path: definition.project_path,
+      instruction_file_name: definition.instruction_file_name,
+      enabled: definition.enabled,
       is_custom: false,
-    },
-    AgentConfig {
-      name: "Claude Code".to_string(),
-      global_path: join_home_path(".claude/skills"),
-      project_path: ".claude/skills".to_string(),
-      instruction_file_name: Some("CLAUDE.md".to_string()),
-      enabled: true,
-      is_custom: false,
-    },
-    AgentConfig {
-      name: "Cursor".to_string(),
-      global_path: join_home_path(".cursor/skills"),
-      project_path: ".cursor/skills".to_string(),
-      instruction_file_name: Some("AGENTS.md".to_string()),
-      enabled: true,
-      is_custom: false,
-    },
-    AgentConfig {
-      name: "OpenClaw".to_string(),
-      global_path: join_home_path(".openclaw/skills"),
-      project_path: "skills".to_string(),
-      instruction_file_name: Some("AGENTS.md".to_string()),
-      enabled: false,
-      is_custom: false,
-    },
-    AgentConfig {
-      name: "CodeBuddy".to_string(),
-      global_path: join_home_path(".codebuddy/skills"),
-      project_path: ".codebuddy/skills".to_string(),
-      instruction_file_name: Some("AGENTS.md".to_string()),
-      enabled: false,
-      is_custom: false,
-    },
-    AgentConfig {
-      name: "OpenCode".to_string(),
-      global_path: join_home_path(".config/opencode/skills"),
-      project_path: ".agents/skills".to_string(),
-      instruction_file_name: Some("AGENTS.md".to_string()),
-      enabled: false,
-      is_custom: false,
-    },
-    AgentConfig {
-      name: "Codex".to_string(),
-      global_path: join_home_path(".codex/skills"),
-      project_path: ".codex/skills".to_string(),
-      instruction_file_name: Some("AGENTS.md".to_string()),
-      enabled: true,
-      is_custom: false,
-    },
-    AgentConfig {
-      name: "Kimi Code CLI".to_string(),
-      global_path: join_home_path(".config/agents/skills"),
-      project_path: ".agents/skills".to_string(),
-      instruction_file_name: Some("AGENTS.md".to_string()),
-      enabled: false,
-      is_custom: false,
-    },
-    AgentConfig {
-      name: "Kilo Code".to_string(),
-      global_path: join_home_path(".kilocode/skills"),
-      project_path: ".kilocode/skills".to_string(),
-      instruction_file_name: Some("AGENTS.md".to_string()),
-      enabled: false,
-      is_custom: false,
-    },
-    AgentConfig {
-      name: "Kiro CLI".to_string(),
-      global_path: join_home_path(".kiro/skills"),
-      project_path: ".kiro/skills".to_string(),
-      instruction_file_name: Some("AGENTS.md".to_string()),
-      enabled: false,
-      is_custom: false,
-    },
-    AgentConfig {
-      name: "Gemini CLI".to_string(),
-      global_path: join_home_path(".gemini/skills"),
-      project_path: ".gemini/skills".to_string(),
-      instruction_file_name: Some("AGENTS.md".to_string()),
-      enabled: false,
-      is_custom: false,
-    },
-    AgentConfig {
-      name: "GitHub Copilot".to_string(),
-      global_path: join_home_path(".copilot/skills"),
-      project_path: ".github/skills".to_string(),
-      instruction_file_name: Some("AGENTS.md".to_string()),
-      enabled: false,
-      is_custom: false,
-    },
-    AgentConfig {
-      name: "Windsurf".to_string(),
-      global_path: join_home_path(".codeium/windsurf/skills"),
-      project_path: ".windsurf/skills".to_string(),
-      instruction_file_name: Some("AGENTS.md".to_string()),
-      enabled: false,
-      is_custom: false,
-    },
-    AgentConfig {
-      name: "Trae".to_string(),
-      global_path: join_home_path(".trae/skills"),
-      project_path: ".trae/skills".to_string(),
-      instruction_file_name: Some("AGENTS.md".to_string()),
-      enabled: false,
-      is_custom: false,
-    },
-    AgentConfig {
-      name: "Trae CN".to_string(),
-      global_path: join_home_path(".trae-cn/skills"),
-      project_path: ".trae/skills".to_string(),
-      instruction_file_name: Some("AGENTS.md".to_string()),
-      enabled: false,
-      is_custom: false,
-    },
-    AgentConfig {
-      name: "Qoder".to_string(),
-      global_path: join_home_path(".qoder/skills"),
-      project_path: ".qoder/skills".to_string(),
-      instruction_file_name: Some("AGENTS.md".to_string()),
-      enabled: false,
-      is_custom: false,
-    },
-    AgentConfig {
-      name: "Qwen Code".to_string(),
-      global_path: join_home_path(".qwen/skills"),
-      project_path: ".qwen/skills".to_string(),
-      instruction_file_name: Some("AGENTS.md".to_string()),
-      enabled: false,
-      is_custom: false,
-    },
-  ]
+    })
+    .collect()
 }
 
 fn agent_instruction_file_name(agent: &AgentConfig) -> String {
@@ -3531,6 +3722,7 @@ fn seed_state() -> DesktopState {
     kit_policies,
     kit_loadouts,
     kits,
+    dismissed_official_preset_ids: Vec::new(),
     provider_backups: HashMap::from([
       ("claude".to_string(), vec![]),
       ("codex".to_string(), vec![]),
@@ -4311,6 +4503,242 @@ fn open_external_url(url: String) -> Result<bool, String> {
   Err("Unsupported platform for opening external URLs.".to_string())
 }
 
+fn sync_current_codex_provider_from_live(state: &SharedState) -> Result<(), String> {
+  let live_config = read_live_provider_config(&AppType::Codex)?;
+  let mut state_guard = state
+    .state
+    .lock()
+    .map_err(|_| "state lock poisoned".to_string())?;
+
+  let Some(current_provider) = state_guard
+    .providers
+    .iter()
+    .find(|provider| provider.app_type == AppType::Codex && provider.is_current)
+    .cloned()
+  else {
+    return Ok(());
+  };
+
+  let next_config = preserve_provider_profile(&live_config, &current_provider.config);
+  write_codex_provider_snapshot(&current_provider.id, &next_config)?;
+
+  if let Some(entry) = state_guard
+    .providers
+    .iter_mut()
+    .find(|provider| provider.id == current_provider.id)
+  {
+    entry.config = next_config;
+    entry.updated_at = now_millis();
+  }
+
+  state.persist(&state_guard)?;
+  Ok(())
+}
+
+fn restore_current_codex_provider_snapshot_to_live(state: &SharedState) -> Result<bool, String> {
+  let current_provider = {
+    let state_guard = state
+      .state
+      .lock()
+      .map_err(|_| "state lock poisoned".to_string())?;
+
+    state_guard
+      .providers
+      .iter()
+      .find(|provider| provider.app_type == AppType::Codex && provider.is_current)
+      .cloned()
+  };
+
+  let Some(current_provider) = current_provider else {
+    return Ok(false);
+  };
+
+  let restored_config = preserve_provider_profile(
+    &read_codex_provider_snapshot(&current_provider.id, &current_provider.config)?,
+    &current_provider.config,
+  );
+  validate_provider_config_for_live(&AppType::Codex, &restored_config)?;
+  write_live_provider_config(&AppType::Codex, &restored_config)?;
+  Ok(true)
+}
+
+fn refresh_codex_official_provider_from_live(
+  state: &SharedState,
+  id: &str,
+) -> Result<ProviderRecord, String> {
+  let (provider_index, existing_provider) = {
+    let state_guard = state
+      .state
+      .lock()
+      .map_err(|_| "state lock poisoned".to_string())?;
+
+    let provider_index = state_guard
+      .providers
+      .iter()
+      .position(|provider| provider.id == id)
+      .ok_or_else(|| "Provider not found.".to_string())?;
+    let existing_provider = state_guard.providers[provider_index].clone();
+    (provider_index, existing_provider)
+  };
+
+  if existing_provider.app_type != AppType::Codex {
+    return Err("Only Codex providers can refresh from current live config.".to_string());
+  }
+
+  if provider_profile_kind(&existing_provider.config).as_deref() != Some("official") {
+    return Err("Only Codex official providers can refresh from current live config.".to_string());
+  }
+
+  let live_config = read_live_provider_config(&AppType::Codex)?;
+  let status = codex_official_login_status_from_config(&live_config);
+  if !status.ready {
+    return Err(status.message);
+  }
+
+  let mut next_config = preserve_provider_profile(
+    &sanitize_official_capture_config(&AppType::Codex, &live_config),
+    &existing_provider.config,
+  );
+  set_codex_account_id_on_profile(&mut next_config);
+
+  let mut updated_provider = existing_provider.clone();
+  updated_provider.config = next_config;
+  updated_provider.updated_at = now_millis();
+
+  write_codex_provider_snapshot(&updated_provider.id, &updated_provider.config)?;
+
+  let mut state_guard = state
+    .state
+    .lock()
+    .map_err(|_| "state lock poisoned".to_string())?;
+  state_guard.providers[provider_index] = updated_provider.clone();
+  state.persist(&state_guard)?;
+
+  Ok(updated_provider)
+}
+
+fn clear_codex_live_for_official_login() -> Result<(), String> {
+  write_live_provider_config(
+    &AppType::Codex,
+    &json!({
+      "auth": {},
+      "config": "",
+    }),
+  )
+}
+
+fn codex_login_terminal_command() -> &'static str {
+  "codex logout || true; codex login"
+}
+
+fn escape_applescript_string(raw: &str) -> String {
+  raw.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+#[tauri::command]
+fn provider_codex_open_login_terminal(state: State<SharedState>) -> Result<bool, String> {
+  sync_current_codex_provider_from_live(&state)?;
+  clear_codex_live_for_official_login()?;
+
+  #[cfg(target_os = "macos")]
+  {
+    let command = escape_applescript_string(codex_login_terminal_command());
+    Command::new("osascript")
+      .args([
+        "-e",
+        "tell application \"Terminal\"",
+        "-e",
+        "activate",
+        "-e",
+        &format!("do script \"{}\"", command),
+        "-e",
+        "end tell",
+      ])
+      .spawn()
+      .map_err(|error| format!("Failed to open Terminal for Codex login: {}", error))?;
+    return Ok(true);
+  }
+
+  #[cfg(target_os = "windows")]
+  {
+    Command::new("cmd")
+      .args(["/C", "start", "cmd", "/K", "codex logout & codex login"])
+      .spawn()
+      .map_err(|error| format!("Failed to open terminal for Codex login: {}", error))?;
+    return Ok(true);
+  }
+
+  #[cfg(all(unix, not(target_os = "macos")))]
+  {
+    let candidates: [(&str, &[&str]); 3] = [
+      (
+        "x-terminal-emulator",
+        &["-e", "sh", "-lc", "codex logout || true; codex login; exec $SHELL"],
+      ),
+      (
+        "gnome-terminal",
+        &["--", "sh", "-lc", "codex logout || true; codex login; exec $SHELL"],
+      ),
+      (
+        "konsole",
+        &["-e", "sh", "-lc", "codex logout || true; codex login; exec $SHELL"],
+      ),
+    ];
+
+    for (binary, args) in candidates {
+      if Command::new(binary).args(args).spawn().is_ok() {
+        return Ok(true);
+      }
+    }
+
+    return Err("Failed to open a terminal for Codex login. Please run `codex logout` and `codex login` manually.".to_string());
+  }
+
+  #[allow(unreachable_code)]
+  Err("Unsupported platform for launching Codex login terminal.".to_string())
+}
+
+#[tauri::command]
+fn provider_codex_official_login_status() -> Result<CodexOfficialLoginStatus, String> {
+  let live_config = read_live_provider_config(&AppType::Codex)?;
+  Ok(codex_official_login_status_from_config(&live_config))
+}
+
+#[tauri::command]
+fn provider_codex_capture_official(
+  app: tauri::AppHandle,
+  state: State<SharedState>,
+  name: String,
+  profile: Option<Value>,
+) -> Result<ProviderRecord, String> {
+  let live_config = read_live_provider_config(&AppType::Codex)?;
+  let status = codex_official_login_status_from_config(&live_config);
+  if !status.ready {
+    return Err(status.message);
+  }
+
+  let provider = capture_provider_from_live_record(&state, AppType::Codex, name, profile)?;
+  if let Err(error) = restore_current_codex_provider_snapshot_to_live(&state) {
+    eprintln!(
+      "Failed to restore current Codex provider after capturing official account: {}",
+      error
+    );
+  }
+  let _ = refresh_tray_menu(&app);
+  Ok(provider)
+}
+
+#[tauri::command]
+fn provider_codex_refresh_official(
+  app: tauri::AppHandle,
+  state: State<SharedState>,
+  id: String,
+) -> Result<ProviderRecord, String> {
+  let provider = refresh_codex_official_provider_from_live(&state, &id)?;
+  let _ = refresh_tray_menu(&app);
+  Ok(provider)
+}
+
 #[tauri::command]
 fn provider_list(state: State<SharedState>, appType: Option<String>) -> Result<Vec<ProviderRecord>, String> {
   let state_guard = state
@@ -4320,15 +4748,15 @@ fn provider_list(state: State<SharedState>, appType: Option<String>) -> Result<V
 
   if let Some(app_value) = appType {
     let app_type = AppType::parse(&app_value)?;
-    return Ok(state_guard
+    return state_guard
       .providers
       .iter()
       .filter(|provider| provider.app_type == app_type)
-      .cloned()
-      .collect());
+      .map(hydrate_provider_record)
+      .collect();
   }
 
-  Ok(state_guard.providers.clone())
+  state_guard.providers.iter().map(hydrate_provider_record).collect()
 }
 
 #[tauri::command]
@@ -4339,13 +4767,12 @@ fn provider_current(state: State<SharedState>, appType: String) -> Result<Option
     .lock()
     .map_err(|_| "state lock poisoned".to_string())?;
 
-  Ok(
-    state_guard
-      .providers
-      .iter()
-      .find(|provider| provider.app_type == app_type && provider.is_current)
-      .cloned(),
-  )
+  state_guard
+    .providers
+    .iter()
+    .find(|provider| provider.app_type == app_type && provider.is_current)
+    .map(hydrate_provider_record)
+    .transpose()
 }
 
 #[tauri::command]
@@ -4359,7 +4786,8 @@ fn provider_get_raw(state: State<SharedState>, id: String) -> Result<ProviderRec
     .providers
     .iter()
     .find(|provider| provider.id == id)
-    .cloned()
+    .map(hydrate_provider_record)
+    .transpose()?
     .ok_or_else(|| "Provider not found.".to_string())
 }
 
@@ -4396,6 +4824,10 @@ fn provider_add(
     created_at,
     updated_at: created_at,
   };
+
+  if provider.app_type == AppType::Codex {
+    write_codex_provider_snapshot(&provider.id, &provider.config)?;
+  }
 
   state_guard.providers.push(provider.clone());
   state.persist(&state_guard)?;
@@ -4445,6 +4877,10 @@ fn provider_update(
     write_live_provider_config(&updated.app_type, &next_config)?;
   }
 
+  if updated.app_type == AppType::Codex {
+    write_codex_provider_snapshot(&updated.id, &updated.config)?;
+  }
+
   state_guard.providers[provider_index] = updated.clone();
 
   state.persist(&state_guard)?;
@@ -4472,6 +4908,9 @@ fn provider_delete(
     .ok_or_else(|| "Provider not found.".to_string())?;
 
   state_guard.providers.retain(|provider| provider.id != id);
+  if target.app_type == AppType::Codex {
+    remove_codex_provider_snapshot(&target.id)?;
+  }
 
   let has_current = state_guard
     .providers
@@ -4590,6 +5029,17 @@ fn provider_restore_latest_backup(
     id
   };
 
+  if app_type == AppType::Codex {
+    if let Some(restored_provider) = state_guard
+      .providers
+      .iter()
+      .find(|provider| provider.id == restored_id)
+      .cloned()
+    {
+      write_codex_provider_snapshot(&restored_provider.id, &restored_provider.config)?;
+    }
+  }
+
   state.persist(&state_guard)?;
   drop(state_guard);
   let _ = refresh_tray_menu(&app);
@@ -4611,45 +5061,7 @@ fn provider_capture_live(
   profile: Option<Value>,
 ) -> Result<ProviderRecord, String> {
   let app_type = AppType::parse(&appType)?;
-  let live_config = read_live_provider_config(&app_type)?;
-  let mut config_obj = match sanitize_official_capture_config(&app_type, &live_config) {
-    Value::Object(config_map) => config_map,
-    _ => Map::new(),
-  };
-
-  let mut profile_obj = Map::new();
-  profile_obj.insert("kind".to_string(), Value::String("official".to_string()));
-
-  if let Some(Value::Object(profile_map)) = profile {
-    for (key, value) in profile_map.into_iter() {
-      profile_obj.insert(key, value);
-    }
-  }
-
-  profile_obj.insert("kind".to_string(), Value::String("official".to_string()));
-  config_obj.insert("_profile".to_string(), Value::Object(profile_obj));
-
-  let provider = ProviderRecord {
-    id: state.next_id(&format!("provider-{}-official", app_type.as_str())),
-    app_type,
-    name: if name.trim().is_empty() {
-      format!("{} official", appType)
-    } else {
-      name.trim().to_string()
-    },
-    config: Value::Object(config_obj),
-    is_current: false,
-    created_at: now_millis(),
-    updated_at: now_millis(),
-  };
-
-  let mut state_guard = state
-    .state
-    .lock()
-    .map_err(|_| "state lock poisoned".to_string())?;
-  state_guard.providers.push(provider.clone());
-  state.persist(&state_guard)?;
-  drop(state_guard);
+  let provider = capture_provider_from_live_record(&state, app_type, name, profile)?;
   let _ = refresh_tray_menu(&app);
   Ok(provider)
 }
@@ -5372,6 +5784,7 @@ fn official_preset_install(
   id: String,
   overwrite: Option<bool>,
 ) -> Result<OfficialPresetInstallResult, String> {
+  let preset_id = id.clone();
   let catalog = official_preset_catalog()?;
   let catalog_version = catalog.version;
   let preset = catalog
@@ -5587,6 +6000,7 @@ fn official_preset_install(
       .collect::<Vec<_>>();
 
     prune_unused_official_source_loadouts(&mut state_guard);
+    clear_dismissed_official_preset(&mut state_guard, &preset_id);
     refresh_skills_in_state(&mut state_guard);
     state.persist(&state_guard)?;
 
@@ -5774,10 +6188,14 @@ fn kit_delete(state: State<SharedState>, id: String) -> Result<bool, String> {
     .state
     .lock()
     .map_err(|_| "state lock poisoned".to_string())?;
+  let deleted_kit = state_guard.kits.iter().find(|kit| kit.id == id).cloned();
   let before = state_guard.kits.len();
   state_guard.kits.retain(|kit| kit.id != id);
   let deleted = before != state_guard.kits.len();
   if deleted {
+    if let Some(kit) = deleted_kit.as_ref() {
+      remember_dismissed_official_preset(&mut state_guard, kit);
+    }
     prune_unused_official_source_loadouts(&mut state_guard);
     state.persist(&state_guard)?;
   }
@@ -6325,7 +6743,24 @@ fn switch_provider_internal(
     Some((backup_provider, updated_config))
   });
 
-  let next_config = merge_live_config(&app_type, &live_before, &target.config);
+  if app_type == AppType::Codex {
+    if let Some(previous_current) = current.as_ref() {
+      if previous_current.id != target.id {
+        write_codex_provider_snapshot(&previous_current.id, &live_before)?;
+      }
+    }
+  }
+
+  let target_config = if app_type == AppType::Codex {
+    preserve_provider_profile(
+      &read_codex_provider_snapshot(&target.id, &target.config)?,
+      &target.config,
+    )
+  } else {
+    target.config.clone()
+  };
+
+  let next_config = merge_live_config(&app_type, &live_before, &target_config);
   validate_provider_config_for_live(&app_type, &next_config)?;
   write_live_provider_config(&app_type, &next_config)?;
 
@@ -6353,6 +6788,10 @@ fn switch_provider_internal(
 
     provider.is_current = provider.id == provider_id;
     provider.updated_at = updated_at;
+  }
+
+  if app_type == AppType::Codex {
+    write_codex_provider_snapshot(provider_id, &target_config)?;
   }
 
   state.persist(&state_guard)?;
@@ -6416,6 +6855,12 @@ fn create_tray_icon<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Resu
 mod tests {
   use super::*;
   use std::fs::{create_dir_all, remove_dir_all};
+  use std::sync::{Mutex, OnceLock};
+
+  fn home_env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+  }
 
   fn build_agent(name: &str, project_path: &str) -> AgentConfig {
     AgentConfig {
@@ -6458,6 +6903,7 @@ mod tests {
   ) -> OfficialPresetRecord {
     OfficialPresetRecord {
       id: id.to_string(),
+      auto_install: false,
       name: name.to_string(),
       description: None,
       policy: OfficialPresetPolicy {
@@ -6817,6 +7263,122 @@ mod tests {
       .kit_loadouts
       .iter()
       .any(|loadout| loadout.id == "loadout-default"));
+  }
+
+  #[test]
+  fn managed_official_preset_helpers_track_user_dismissals() {
+    let preset = build_official_preset(
+      "preset-a",
+      "Preset A",
+      vec![build_official_source(
+        "source-a",
+        "https://github.com/acme/skills/tree/main/skills",
+        &["app-router-helper"],
+      )],
+    );
+    let mut state = seed_state();
+    let kit = build_managed_official_kit(&preset);
+
+    assert!(remember_dismissed_official_preset(&mut state, &kit));
+    assert_eq!(
+      state.dismissed_official_preset_ids,
+      vec!["preset-a".to_string()]
+    );
+    assert!(!remember_dismissed_official_preset(&mut state, &kit));
+
+    assert!(clear_dismissed_official_preset(&mut state, "preset-a"));
+    assert!(state.dismissed_official_preset_ids.is_empty());
+    assert!(!clear_dismissed_official_preset(&mut state, "preset-a"));
+  }
+
+  #[test]
+  fn missing_managed_official_preset_ids_skip_dismissed_presets() {
+    let preset_a = build_official_preset(
+      "preset-a",
+      "Preset A",
+      vec![build_official_source(
+        "source-a",
+        "https://github.com/acme/skills/tree/main/skills",
+        &["app-router-helper"],
+      )],
+    );
+    let preset_b = build_official_preset(
+      "preset-b",
+      "Preset B",
+      vec![build_official_source(
+        "source-b",
+        "https://github.com/acme/skills/tree/main/skills",
+        &["web-design-guidelines"],
+      )],
+    );
+    let base = std::env::temp_dir().join(format!("skills-hub-state-{}", now_millis()));
+    let catalog_dir = base.join("catalog");
+    create_dir_all(catalog_dir.join("policies")).unwrap();
+    std::fs::write(catalog_dir.join("policies/policy-demo.md"), "# demo").unwrap();
+    std::fs::write(
+      catalog_dir.join("catalog.json"),
+      serde_json::to_string(&json!({
+        "version": 1,
+        "presets": [preset_a, preset_b],
+      }))
+      .unwrap(),
+    )
+    .unwrap();
+
+    let state_path = base.join("desktop-state.json");
+    let desktop_state = DesktopState {
+      dismissed_official_preset_ids: vec!["preset-b".to_string()],
+      kits: vec![build_managed_official_kit(&build_official_preset(
+        "preset-a",
+        "Preset A",
+        vec![build_official_source(
+          "source-a",
+          "https://github.com/acme/skills/tree/main/skills",
+          &["app-router-helper"],
+        )],
+      ))],
+      ..seed_state()
+    };
+    let shared_state = SharedState {
+      state: Mutex::new(desktop_state),
+      counter: AtomicU64::new(1),
+      state_path,
+    };
+
+    let previous_dir = std::env::var_os("SKILLS_HUB_OFFICIAL_PRESETS_DIR");
+    std::env::set_var("SKILLS_HUB_OFFICIAL_PRESETS_DIR", &catalog_dir);
+
+    let missing = missing_managed_official_preset_ids(&shared_state).unwrap();
+
+    if let Some(value) = previous_dir {
+      std::env::set_var("SKILLS_HUB_OFFICIAL_PRESETS_DIR", value);
+    } else {
+      std::env::remove_var("SKILLS_HUB_OFFICIAL_PRESETS_DIR");
+    }
+    let _ = remove_dir_all(base);
+
+    assert!(!missing.contains(&"preset-b".to_string()));
+  }
+
+  #[test]
+  fn missing_managed_official_preset_ids_only_include_auto_install_presets() {
+    let shared_state = SharedState {
+      state: Mutex::new(seed_state()),
+      counter: AtomicU64::new(1),
+      state_path: std::env::temp_dir().join(format!("skills-hub-state-{}.json", now_millis())),
+    };
+
+    let missing = missing_managed_official_preset_ids(&shared_state).unwrap();
+
+    assert_eq!(
+      missing,
+      vec![
+        "fullstack-product-engineering".to_string(),
+        "web-frontend-excellence".to_string(),
+        "python-service-api".to_string(),
+        "langchain-langgraph-apps".to_string(),
+      ]
+    );
   }
 
   #[test]
@@ -7213,6 +7775,206 @@ mod tests {
       ]
     );
   }
+
+  #[test]
+  fn restoring_current_codex_provider_reverts_temporary_official_login_state() {
+    let _env_guard = home_env_lock().lock().unwrap();
+    let temp_home = std::env::temp_dir().join(format!("skills-hub-codex-restore-{}", now_millis()));
+    let previous_home = std::env::var_os("HOME");
+    std::env::set_var("HOME", &temp_home);
+
+    create_dir_all(temp_home.join(".codex")).unwrap();
+
+    let shared_state = SharedState::new();
+    let provider_id = "provider-codex-current";
+    let provider_config = json!({
+      "_profile": {
+        "kind": "api",
+        "vendorKey": "openai",
+        "endpoint": "https://api.openai.com/v1",
+        "model": "gpt-5.2"
+      },
+      "auth": {
+        "OPENAI_API_KEY": "persisted-key"
+      },
+      "config": concat!(
+        "model_provider = \"openai\"\n",
+        "model = \"gpt-5.2\"\n",
+        "\n",
+        "[model_providers.openai]\n",
+        "name = \"openai\"\n",
+        "base_url = \"https://api.openai.com/v1\"\n",
+        "wire_api = \"responses\"\n",
+        "requires_openai_auth = true\n"
+      )
+    });
+
+    {
+      let mut state_guard = shared_state.state.lock().unwrap();
+      state_guard.providers = vec![ProviderRecord {
+        id: provider_id.to_string(),
+        app_type: AppType::Codex,
+        name: "Current Codex".to_string(),
+        config: provider_config.clone(),
+        is_current: true,
+        created_at: 1,
+        updated_at: 1,
+      }];
+      shared_state.persist(&state_guard).unwrap();
+    }
+
+    write_codex_provider_snapshot(provider_id, &provider_config).unwrap();
+    write_live_provider_config(
+      &AppType::Codex,
+      &json!({
+        "auth": {
+          "OPENAI_API_KEY": Value::Null,
+          "auth_mode": "chatgpt",
+          "tokens": {
+            "account_id": "official-account"
+          }
+        },
+        "config": concat!(
+          "model_provider = \"custom\"\n",
+          "model = \"gpt-5.2\"\n",
+          "model_reasoning_effort = \"high\"\n",
+          "disable_response_storage = true\n",
+          "\n",
+          "[model_providers.custom]\n",
+          "name = \"custom\"\n",
+          "base_url = \"https://your-api-endpoint.com/v1\"\n",
+          "wire_api = \"responses\"\n",
+          "requires_openai_auth = true\n"
+        )
+      }),
+    )
+    .unwrap();
+
+    let restored = restore_current_codex_provider_snapshot_to_live(&shared_state).unwrap();
+    assert!(restored);
+
+    let live_config = read_live_provider_config(&AppType::Codex).unwrap();
+    assert_eq!(
+      live_config
+        .get("auth")
+        .and_then(|auth| auth.get("OPENAI_API_KEY"))
+        .and_then(|value| value.as_str()),
+      Some("persisted-key")
+    );
+    assert!(
+      live_config
+        .get("config")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .contains("https://api.openai.com/v1")
+    );
+    assert!(
+      !live_config
+        .get("config")
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .contains("https://your-api-endpoint.com/v1")
+    );
+
+    if let Some(home) = previous_home {
+      std::env::set_var("HOME", home);
+    } else {
+      std::env::remove_var("HOME");
+    }
+    let _ = remove_dir_all(temp_home);
+  }
+
+  #[test]
+  fn refreshing_codex_official_provider_pulls_current_live_auth_and_profile() {
+    let _env_guard = home_env_lock().lock().unwrap();
+    let temp_home = std::env::temp_dir().join(format!("skills-hub-codex-refresh-{}", now_millis()));
+    let previous_home = std::env::var_os("HOME");
+    std::env::set_var("HOME", &temp_home);
+
+    create_dir_all(temp_home.join(".codex")).unwrap();
+
+    let shared_state = SharedState::new();
+    let provider_id = "provider-codex-official";
+    let provider_config = json!({
+      "_profile": {
+        "kind": "official",
+        "vendorKey": "openai-official",
+        "accountName": "Team",
+        "accountId": "old-account"
+      },
+      "auth": {
+        "OPENAI_API_KEY": Value::Null,
+        "auth_mode": "chatgpt",
+        "tokens": {
+          "account_id": "old-account"
+        }
+      },
+      "config": ""
+    });
+
+    {
+      let mut state_guard = shared_state.state.lock().unwrap();
+      state_guard.providers = vec![ProviderRecord {
+        id: provider_id.to_string(),
+        app_type: AppType::Codex,
+        name: "Codex Official".to_string(),
+        config: provider_config.clone(),
+        is_current: false,
+        created_at: 1,
+        updated_at: 1,
+      }];
+      shared_state.persist(&state_guard).unwrap();
+    }
+
+    write_live_provider_config(
+      &AppType::Codex,
+      &json!({
+        "auth": {
+          "OPENAI_API_KEY": Value::Null,
+          "auth_mode": "chatgpt",
+          "tokens": {
+            "account_id": "new-account",
+            "access_token": "token-demo"
+          }
+        },
+        "config": ""
+      }),
+    )
+    .unwrap();
+
+    let refreshed = refresh_codex_official_provider_from_live(&shared_state, provider_id).unwrap();
+    assert_eq!(
+      refreshed
+        .config
+        .get("_profile")
+        .and_then(|profile| profile.get("accountId"))
+        .and_then(|value| value.as_str()),
+      Some("new-account")
+    );
+    assert_eq!(
+      refreshed
+        .config
+        .get("config")
+        .and_then(|value| value.as_str()),
+      Some("")
+    );
+    assert_eq!(
+      refreshed
+        .config
+        .get("auth")
+        .and_then(|auth| auth.get("tokens"))
+        .and_then(|tokens| tokens.get("account_id"))
+        .and_then(|value| value.as_str()),
+      Some("new-account")
+    );
+
+    if let Some(home) = previous_home {
+      std::env::set_var("HOME", home);
+    } else {
+      std::env::remove_var("HOME");
+    }
+    let _ = remove_dir_all(temp_home);
+  }
 }
 
 fn main() {
@@ -7222,7 +7984,9 @@ fn main() {
     .setup(|app| {
       let shared_state: State<SharedState> = app.state();
       if managed_official_presets_need_install(&shared_state)? {
-        let _ = official_preset_install_all(shared_state.clone(), Some(true));
+        for preset_id in missing_managed_official_preset_ids(&shared_state)? {
+          let _ = official_preset_install(shared_state.clone(), preset_id, Some(true));
+        }
       }
       let skill_watcher = start_skill_watcher(app.handle().clone());
       app.manage(skill_watcher);
@@ -7283,6 +8047,10 @@ fn main() {
       provider_latest_backup,
       provider_restore_latest_backup,
       provider_capture_live,
+      provider_codex_open_login_terminal,
+      provider_codex_official_login_status,
+      provider_codex_capture_official,
+      provider_codex_refresh_official,
       universal_provider_list,
       universal_provider_get_raw,
       universal_provider_add,

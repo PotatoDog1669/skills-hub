@@ -1,7 +1,8 @@
 import fs from 'fs-extra'
 import path from 'path'
 import os from 'os'
-import { DEFAULT_INSTRUCTION_FILE_NAME, getAgentInstructionFileName } from '@/lib/core/agent-config'
+import { getAgentInstructionFileName } from '@/lib/core/agent-config'
+import { createBuiltinAgentConfigs } from '@/lib/core/agent-registry'
 
 const CONFIG_PATH = path.join(os.homedir(), '.skills-hub', 'config.json')
 const CONFIG_DIR = path.dirname(CONFIG_PATH)
@@ -44,144 +45,7 @@ export interface AgentConfig {
 
 export { DEFAULT_INSTRUCTION_FILE_NAME, getAgentInstructionFileName } from '@/lib/core/agent-config'
 
-const DEFAULT_AGENTS: AgentConfig[] = [
-  {
-    name: 'Antigravity',
-    globalPath: path.join(os.homedir(), '.gemini/antigravity/skills'),
-    projectPath: '.agent/skills',
-    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
-    enabled: true,
-    isCustom: false,
-  },
-  {
-    name: 'Claude Code',
-    globalPath: path.join(os.homedir(), '.claude/skills'),
-    projectPath: '.claude/skills',
-    instructionFileName: 'CLAUDE.md',
-    enabled: true,
-    isCustom: false,
-  },
-  {
-    name: 'Cursor',
-    globalPath: path.join(os.homedir(), '.cursor/skills'),
-    projectPath: '.cursor/skills',
-    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
-    enabled: true,
-    isCustom: false,
-  },
-  {
-    name: 'OpenClaw',
-    globalPath: path.join(os.homedir(), '.openclaw/skills'),
-    projectPath: 'skills',
-    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'CodeBuddy',
-    globalPath: path.join(os.homedir(), '.codebuddy/skills'),
-    projectPath: '.codebuddy/skills',
-    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'OpenCode',
-    globalPath: path.join(os.homedir(), '.config/opencode/skills'),
-    projectPath: '.agents/skills',
-    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Codex',
-    globalPath: path.join(os.homedir(), '.codex/skills'),
-    projectPath: '.codex/skills',
-    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Kimi Code CLI',
-    globalPath: path.join(os.homedir(), '.config/agents/skills'),
-    projectPath: '.agents/skills',
-    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Kilo Code',
-    globalPath: path.join(os.homedir(), '.kilocode/skills'),
-    projectPath: '.kilocode/skills',
-    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Kiro CLI',
-    globalPath: path.join(os.homedir(), '.kiro/skills'),
-    projectPath: '.kiro/skills',
-    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Gemini CLI',
-    globalPath: path.join(os.homedir(), '.gemini/skills'),
-    projectPath: '.gemini/skills',
-    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'GitHub Copilot',
-    globalPath: path.join(os.homedir(), '.copilot/skills'),
-    projectPath: '.github/skills',
-    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Windsurf',
-    globalPath: path.join(os.homedir(), '.codeium/windsurf/skills'),
-    projectPath: '.windsurf/skills',
-    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Trae',
-    globalPath: path.join(os.homedir(), '.trae/skills'),
-    projectPath: '.trae/skills',
-    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Trae CN',
-    globalPath: path.join(os.homedir(), '.trae-cn/skills'),
-    projectPath: '.trae/skills',
-    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Qoder',
-    globalPath: path.join(os.homedir(), '.qoder/skills'),
-    projectPath: '.qoder/skills',
-    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
-    enabled: false,
-    isCustom: false,
-  },
-  {
-    name: 'Qwen Code',
-    globalPath: path.join(os.homedir(), '.qwen/skills'),
-    projectPath: '.qwen/skills',
-    instructionFileName: DEFAULT_INSTRUCTION_FILE_NAME,
-    enabled: false,
-    isCustom: false,
-  },
-]
+const DEFAULT_AGENTS: AgentConfig[] = createBuiltinAgentConfigs(os.homedir())
 
 const DEFAULT_CONFIG: AppConfig = {
   hubPath: path.join(os.homedir(), 'skills-hub'),

@@ -5,6 +5,10 @@ import { useRouter } from '@/apps/desktop-ui/src/shims/navigation'
 import { useConfirm } from '@/components/ConfirmProvider'
 import {
   actionProviderAdd,
+  actionProviderCodexCaptureOfficial,
+  actionProviderCodexOfficialLoginStatus,
+  actionProviderCodexOpenLoginTerminal,
+  actionProviderCodexRefreshOfficial,
   actionProviderCaptureLive,
   actionProviderDelete,
   actionProviderGetRaw,
@@ -16,6 +20,7 @@ import {
 } from '@/apps/desktop-ui/src/tauri-actions'
 import type {
   AppType,
+  CodexOfficialLoginStatus,
   ProviderProfile,
   ProviderRecord,
   UniversalProviderRecord,
@@ -28,6 +33,7 @@ import {
   Pencil,
   Play,
   Plus,
+  RefreshCw,
   ShieldCheck,
   Trash2,
   X,
@@ -401,6 +407,7 @@ function sanitizeCodexProviderKey(value: string): string {
 }
 
 function normalizeTomlTextWithEol(value: string): string {
+  if (!value) return ''
   return value.endsWith('\n') ? value : `${value}\n`
 }
 
@@ -711,6 +718,9 @@ function stringifyCodexConfigToml(
   fallbackEndpoint: string,
   fallbackModel: string
 ): string {
+  if (typeof configValue === 'string') {
+    return configValue.trim() ? normalizeTomlTextWithEol(configValue) : ''
+  }
   const info = parseCodexTomlInfo(configValue, fallbackEndpoint, fallbackModel)
   if (info.configText) {
     return info.configText
@@ -741,6 +751,8 @@ export function ProviderPanel({
   const [universalForm, setUniversalForm] = useState<UniversalProviderFormState>(() =>
     emptyUniversalForm()
   )
+  const [codexOfficialLoginStatus, setCodexOfficialLoginStatus] =
+    useState<CodexOfficialLoginStatus | null>(null)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -751,12 +763,56 @@ export function ProviderPanel({
 
   const currentProvider = currentProviders[activeApp]
   const currentProviderSubtitle = currentProvider ? getProviderSubtitle(currentProvider) : ''
+  const isCodexOfficialCreateMode =
+    dialogOpen &&
+    dialogTab === 'app' &&
+    !editingProviderId &&
+    activeApp === 'codex' &&
+    appProviderMode === 'official'
 
   useEffect(() => {
     if (!message || message.type !== 'success') return
     const timer = window.setTimeout(() => setMessage(null), 3200)
     return () => window.clearTimeout(timer)
   }, [message])
+
+  useEffect(() => {
+    if (!isCodexOfficialCreateMode) {
+      setCodexOfficialLoginStatus(null)
+      return
+    }
+
+    let cancelled = false
+
+    const refreshStatus = async () => {
+      try {
+        const status = await actionProviderCodexOfficialLoginStatus()
+        if (!cancelled) {
+          setCodexOfficialLoginStatus(status)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setCodexOfficialLoginStatus(null)
+          setMessage({
+            type: 'error',
+            text: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+    }
+
+    void refreshStatus()
+
+    const handleFocus = () => {
+      void refreshStatus()
+    }
+
+    window.addEventListener('focus', handleFocus)
+    return () => {
+      cancelled = true
+      window.removeEventListener('focus', handleFocus)
+    }
+  }, [isCodexOfficialCreateMode])
 
   const patchAppForm = (patch: Partial<AppProviderFormState>) => {
     setAppForm((prev) => {
@@ -790,6 +846,7 @@ export function ProviderPanel({
     setEditingProviderId(null)
     setSelectedPresetKey('custom')
     setAppProviderMode('api')
+    setCodexOfficialLoginStatus(null)
     const nextForm = emptyAppForm(appType)
     setAppForm(nextForm)
     setUseCodexAdvancedConfig(false)
@@ -867,41 +924,70 @@ export function ProviderPanel({
   }
 
   const handleEditProvider = (provider: ProviderRecord) => {
+    const loadProviderIntoEditor = (raw: ProviderRecord) => {
+      const profile = getProfile(raw.config)
+      const extracted = extractAppFormState(raw.appType, raw.config)
+
+      setActiveApp(raw.appType)
+      setEditingProviderId(raw.id)
+      setSelectedPresetKey(profile.vendorKey || 'custom')
+      setAppProviderMode(profile.kind === 'official' ? 'official' : 'api')
+      const nextForm = {
+        ...emptyAppForm(raw.appType),
+        name: raw.name,
+        ...extracted,
+      }
+      setAppForm(nextForm)
+      if (raw.appType === 'codex') {
+        setUseCodexAdvancedConfig(false)
+        setCodexAuthJsonText(stringifyCodexAuthJson(raw.config.auth, nextForm.apiKey))
+        setCodexConfigTomlText(
+          stringifyCodexConfigToml(raw.config.config ?? raw.config.configToml, nextForm.endpoint, nextForm.model)
+        )
+      }
+      setDialogTab('app')
+      setDialogOpen(true)
+    }
+
     startTransition(async () => {
       try {
         const raw = await actionProviderGetRaw(provider.id)
-        const profile = getProfile(raw.config)
-        const extracted = extractAppFormState(provider.appType, raw.config)
-
-        setActiveApp(provider.appType)
-        setEditingProviderId(raw.id)
-        setSelectedPresetKey(profile.vendorKey || 'custom')
-        setAppProviderMode(profile.kind === 'official' ? 'official' : 'api')
-        const nextForm = {
-          ...emptyAppForm(provider.appType),
-          name: raw.name,
-          ...extracted,
-        }
-        setAppForm(nextForm)
-        if (provider.appType === 'codex') {
-          setUseCodexAdvancedConfig(false)
-          setCodexAuthJsonText(stringifyCodexAuthJson(raw.config.auth, nextForm.apiKey))
-          setCodexConfigTomlText(
-            stringifyCodexConfigToml(
-              raw.config.config ?? raw.config.configToml,
-              nextForm.endpoint,
-              nextForm.model
-            )
-          )
-        }
-        setDialogTab('app')
-        setDialogOpen(true)
+        loadProviderIntoEditor(raw)
       } catch (error) {
         setMessage({
           type: 'error',
           text: error instanceof Error ? error.message : String(error),
         })
       }
+    })
+  }
+
+  const handleRefreshCodexOfficialFromLive = () => {
+    if (!editingProviderId) return
+
+    runMutation(async () => {
+      const refreshed = await actionProviderCodexRefreshOfficial(editingProviderId)
+      const profile = getProfile(refreshed.config)
+      const extracted = extractAppFormState(refreshed.appType, refreshed.config)
+      const nextForm = {
+        ...emptyAppForm(refreshed.appType),
+        name: refreshed.name,
+        ...extracted,
+      }
+
+      setSelectedPresetKey(profile.vendorKey || 'custom')
+      setAppProviderMode('official')
+      setAppForm(nextForm)
+      setUseCodexAdvancedConfig(false)
+      setCodexAuthJsonText(stringifyCodexAuthJson(refreshed.config.auth, nextForm.apiKey))
+      setCodexConfigTomlText(
+        stringifyCodexConfigToml(
+          refreshed.config.config ?? refreshed.config.configToml,
+          nextForm.endpoint,
+          nextForm.model
+        )
+      )
+      setMessage({ type: 'success', text: '已从当前 Codex live 配置刷新该官方账号。' })
     })
   }
 
@@ -935,8 +1021,7 @@ export function ProviderPanel({
           endpoint: parsedInfo.endpoint,
           model: parsedInfo.model,
         }
-        parsedCodexConfigText =
-          parsedInfo.configText || normalizeTomlTextWithEol(codexConfigTomlText)
+        parsedCodexConfigText = parsedInfo.configText
       } catch (error) {
         setMessage({
           type: 'error',
@@ -963,7 +1048,7 @@ export function ProviderPanel({
             },
           }
 
-          if (activeApp === 'codex' && parsedCodexAuth && parsedCodexConfigText) {
+          if (activeApp === 'codex' && parsedCodexAuth && parsedCodexConfigText !== null) {
             nextOfficialConfig.auth = parsedCodexAuth
             nextOfficialConfig.config = parsedCodexConfigText
           }
@@ -975,17 +1060,36 @@ export function ProviderPanel({
           })
           setMessage({ type: 'success', text: '官方账号已更新。' })
         } else {
-          await actionProviderCaptureLive({
-            appType: activeApp,
-            name: appForm.name.trim(),
-            profile: {
-              kind: 'official',
-              vendorKey: selectedPresetKey === 'custom' ? undefined : selectedPresetKey,
-              accountName: appForm.accountName.trim() || undefined,
-              website: appForm.website.trim() || undefined,
-              note: appForm.note.trim() || undefined,
-            },
-          })
+          if (activeApp === 'codex') {
+            const created = await actionProviderCodexCaptureOfficial({
+              name: appForm.name.trim(),
+              profile: {
+                kind: 'official',
+                vendorKey: selectedPresetKey === 'custom' ? undefined : selectedPresetKey,
+                accountName: appForm.accountName.trim() || undefined,
+                website: appForm.website.trim() || undefined,
+                note: appForm.note.trim() || undefined,
+              },
+            })
+            const capturedProfile = getProfile(created.config)
+            setCodexOfficialLoginStatus({
+              ready: true,
+              accountId: capturedProfile.accountId,
+              message: '已检测到官方登录态并保存为新的 Codex 官方账号。',
+            })
+          } else {
+            await actionProviderCaptureLive({
+              appType: activeApp,
+              name: appForm.name.trim(),
+              profile: {
+                kind: 'official',
+                vendorKey: selectedPresetKey === 'custom' ? undefined : selectedPresetKey,
+                accountName: appForm.accountName.trim() || undefined,
+                website: appForm.website.trim() || undefined,
+                note: appForm.note.trim() || undefined,
+              },
+            })
+          }
           setMessage({ type: 'success', text: '已捕获当前本地登录配置为官方账号。' })
         }
       } else {
@@ -1003,7 +1107,7 @@ export function ProviderPanel({
           activeApp === 'codex' &&
           (useCodexAdvancedConfig || isEditingProvider) &&
           parsedCodexAuth &&
-          parsedCodexConfigText
+          parsedCodexConfigText !== null
             ? {
                 _profile: profile,
                 auth: parsedCodexAuth,
@@ -1029,6 +1133,31 @@ export function ProviderPanel({
       }
 
       closeDialog()
+    })
+  }
+
+  const handleOpenCodexOfficialLoginTerminal = () => {
+    runMutation(async () => {
+      await actionProviderCodexOpenLoginTerminal()
+      setCodexOfficialLoginStatus({
+        ready: false,
+        message: '终端已打开。请完成 codex logout / codex login，完成后返回此窗口继续保存。',
+      })
+      setMessage({
+        type: 'success',
+        text: '已打开终端。请先完成 codex logout / codex login，再回来点击添加以保存当前官方账号。',
+      })
+    })
+  }
+
+  const handleCheckCodexOfficialLoginStatus = () => {
+    runMutation(async () => {
+      const status = await actionProviderCodexOfficialLoginStatus()
+      setCodexOfficialLoginStatus(status)
+      setMessage({
+        type: status.ready ? 'success' : 'error',
+        text: status.message,
+      })
     })
   }
 
@@ -1117,10 +1246,12 @@ export function ProviderPanel({
 
   const selectedPreset = APP_PRESETS[activeApp].find((preset) => preset.key === selectedPresetKey)
   const isEditingProvider = Boolean(editingProviderId)
+  const isCodexOfficialEditing = isEditingProvider && activeApp === 'codex' && appProviderMode === 'official'
   const showAppDialogContent = isEditingProvider || dialogTab === 'app'
   const shouldShowCodexRawSection =
     activeApp === 'codex' && (isEditingProvider || appProviderMode === 'api')
-  const shouldShowCodexRawEditors = isEditingProvider || useCodexAdvancedConfig
+  const shouldShowCodexRawEditors =
+    useCodexAdvancedConfig || (isEditingProvider && !isCodexOfficialEditing)
 
   return (
     <div className="space-y-6">
@@ -1442,6 +1573,40 @@ export function ProviderPanel({
                             ? `当前为${APP_LABEL[activeApp]}官方供应商编辑模式，保存后会更新该账号配置。`
                             : `请先在本机完成 ${APP_LABEL[activeApp]} 登录，再点击添加以捕获当前 live 配置。`}
                         </div>
+                        {!isEditingProvider && activeApp === 'codex' && (
+                          <div className="space-y-3 md:col-span-2">
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={handleOpenCodexOfficialLoginTerminal}
+                                className="inline-flex items-center justify-center rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                              >
+                                打开终端登录 Codex 官方账号
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleCheckCodexOfficialLoginStatus}
+                                className="inline-flex items-center justify-center rounded-md border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                              >
+                                检查当前登录状态
+                              </button>
+                            </div>
+                            {codexOfficialLoginStatus && (
+                              <div
+                                className={`rounded-lg px-3 py-2 text-sm ${
+                                  codexOfficialLoginStatus.ready
+                                    ? 'border border-green-200 bg-green-50 text-green-700'
+                                    : 'border border-amber-200 bg-amber-50 text-amber-700'
+                                }`}
+                              >
+                                {codexOfficialLoginStatus.message}
+                                {codexOfficialLoginStatus.accountId
+                                  ? ` 账号 ID: ${codexOfficialLoginStatus.accountId}`
+                                  : ''}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </>
                     ) : (
                       <>
@@ -1485,7 +1650,28 @@ export function ProviderPanel({
                                   : '编辑 auth.json/config.toml'}
                               </button>
                             )}
-                            {(shouldShowCodexRawEditors || isEditingProvider) && (
+                            {isCodexOfficialEditing && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={handleRefreshCodexOfficialFromLive}
+                                  className="inline-flex items-center gap-1 rounded border border-gray-200 px-2.5 py-1 text-xs hover:bg-gray-50"
+                                >
+                                  <RefreshCw size={12} />
+                                  从当前 Codex 刷新
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setUseCodexAdvancedConfig((prev) => !prev)}
+                                  className="rounded border border-gray-200 px-2.5 py-1 text-xs hover:bg-gray-50"
+                                >
+                                  {useCodexAdvancedConfig
+                                    ? '隐藏 auth.json/config.toml'
+                                    : '查看 auth.json/config.toml'}
+                                </button>
+                              </>
+                            )}
+                            {shouldShowCodexRawEditors && (
                               <button
                                 type="button"
                                 onClick={handleFormatCodexAdvanced}
@@ -1529,7 +1715,9 @@ export function ProviderPanel({
                           </div>
                         ) : (
                           <div className="text-xs text-gray-500">
-                            开启高级配置后可直接编辑 auth.json 与 config.toml。
+                            {isCodexOfficialEditing
+                              ? '当前官方账号默认直接使用已捕获的登录态；只有在排查问题时才需要查看或编辑 auth.json / config.toml。'
+                              : '开启高级配置后可直接编辑 auth.json 与 config.toml。'}
                           </div>
                         )}
                       </div>

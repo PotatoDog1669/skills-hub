@@ -62,3 +62,9 @@ export interface SwitchResult {
   switchedFrom: string | null
   switchedTo: string
 }
+
+export interface CodexOfficialLoginStatus {
+  ready: boolean
+  accountId?: string
+  message: string
+}

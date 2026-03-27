@@ -13,6 +13,7 @@ import type {
   OfficialPresetSummary,
 } from '@/lib/core/kit-types'
 import type {
+  CodexOfficialLoginStatus,
   ProviderRecord,
   SwitchResult,
   UniversalProviderApps,
@@ -259,6 +260,50 @@ export async function actionProviderCaptureLive(values: {
     name: values.name,
     profile: values.profile,
   })
+  await refreshProviderState()
+  return result
+}
+
+export async function actionProviderCodexOpenLoginTerminal() {
+  if (!isTauriRuntime()) {
+    throw new Error('Tauri runtime is required.')
+  }
+
+  const result = await invokeCommand<boolean>('provider_codex_open_login_terminal')
+  await refreshProviderState()
+  return result
+}
+
+export async function actionProviderCodexOfficialLoginStatus() {
+  if (!isTauriRuntime()) {
+    throw new Error('Tauri runtime is required.')
+  }
+
+  return invokeCommand<CodexOfficialLoginStatus>('provider_codex_official_login_status')
+}
+
+export async function actionProviderCodexCaptureOfficial(values: {
+  name: string
+  profile?: Record<string, unknown>
+}) {
+  if (!isTauriRuntime()) {
+    throw new Error('Tauri runtime is required.')
+  }
+
+  const result = await invokeCommand<ProviderRecord>('provider_codex_capture_official', {
+    name: values.name,
+    profile: values.profile,
+  })
+  await refreshProviderState()
+  return result
+}
+
+export async function actionProviderCodexRefreshOfficial(id: string) {
+  if (!isTauriRuntime()) {
+    throw new Error('Tauri runtime is required.')
+  }
+
+  const result = await invokeCommand<ProviderRecord>('provider_codex_refresh_official', { id })
   await refreshProviderState()
   return result
 }

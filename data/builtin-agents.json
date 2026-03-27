@@ -1,0 +1,108 @@
+[
+  {
+    "name": "Antigravity",
+    "globalPathRelative": ".gemini/antigravity/skills",
+    "projectPath": ".agent/skills",
+    "enabled": true
+  },
+  {
+    "name": "Claude Code",
+    "globalPathRelative": ".claude/skills",
+    "projectPath": ".claude/skills",
+    "instructionFileName": "CLAUDE.md",
+    "enabled": true
+  },
+  {
+    "name": "Cursor",
+    "globalPathRelative": ".cursor/skills",
+    "projectPath": ".cursor/skills",
+    "enabled": true
+  },
+  {
+    "name": "OpenClaw",
+    "globalPathRelative": ".openclaw/skills",
+    "projectPath": "skills",
+    "enabled": false
+  },
+  {
+    "name": "CodeBuddy",
+    "globalPathRelative": ".codebuddy/skills",
+    "projectPath": ".codebuddy/skills",
+    "enabled": false
+  },
+  {
+    "name": "OpenCode",
+    "globalPathRelative": ".config/opencode/skills",
+    "projectPath": ".agents/skills",
+    "enabled": false
+  },
+  {
+    "name": "Codex",
+    "globalPathRelative": ".codex/skills",
+    "projectPath": ".codex/skills",
+    "scanProjectPaths": [
+      ".agents/skills"
+    ],
+    "enabled": false
+  },
+  {
+    "name": "Kimi Code CLI",
+    "globalPathRelative": ".config/agents/skills",
+    "projectPath": ".agents/skills",
+    "enabled": false
+  },
+  {
+    "name": "Kilo Code",
+    "globalPathRelative": ".kilocode/skills",
+    "projectPath": ".kilocode/skills",
+    "enabled": false
+  },
+  {
+    "name": "Kiro CLI",
+    "globalPathRelative": ".kiro/skills",
+    "projectPath": ".kiro/skills",
+    "enabled": false
+  },
+  {
+    "name": "Gemini CLI",
+    "globalPathRelative": ".gemini/skills",
+    "projectPath": ".gemini/skills",
+    "enabled": false
+  },
+  {
+    "name": "GitHub Copilot",
+    "globalPathRelative": ".copilot/skills",
+    "projectPath": ".github/skills",
+    "enabled": false
+  },
+  {
+    "name": "Windsurf",
+    "globalPathRelative": ".codeium/windsurf/skills",
+    "projectPath": ".windsurf/skills",
+    "enabled": false
+  },
+  {
+    "name": "Trae",
+    "globalPathRelative": ".trae/skills",
+    "projectPath": ".trae/skills",
+    "enabled": false
+  },
+  {
+    "name": "Trae CN",
+    "globalPathRelative": ".trae-cn/skills",
+    "projectPath": ".trae/skills",
+    "enabled": false
+  },
+  {
+    "name": "Qoder",
+    "globalPathRelative": ".qoder/skills",
+    "projectPath": ".qoder/skills",
+    "enabled": false
+  },
+  {
+    "name": "Qwen Code",
+    "globalPathRelative": ".qwen/skills",
+    "projectPath": ".qwen/skills",
+    "enabled": false
+  }
+]

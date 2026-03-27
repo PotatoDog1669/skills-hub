@@ -3,6 +3,7 @@
   "presets": [
     {
       "id": "fullstack-product-engineering",
+      "autoInstall": true,
       "name": "Fullstack Product Engineering",
       "description": "面向现代 Web 产品交付的全栈 Kit，覆盖 React/Next.js、质量、协作和工程流程。",
       "policy": {
@@ -67,6 +68,7 @@
     },
     {
       "id": "web-frontend-excellence",
+      "autoInstall": true,
       "name": "Web Frontend Excellence",
       "description": "面向 React / Next.js 前端工程、设计、性能与体验质量的 Kit。",
       "policy": {
@@ -111,7 +113,71 @@
       ]
     },
     {
+      "id": "impeccable-ui-foundations",
+      "autoInstall": true,
+      "name": "Impeccable UI Foundations",
+      "description": "面向设计驱动型前端与产品界面的体验 Kit，强调先建立设计上下文，再进行高质量视觉实现、交互细化与最终体验打磨。",
+      "policy": {
+        "name": "Impeccable UI Foundations",
+        "description": "适用于设计驱动型前端与产品界面的轻量 AGENTS.md 模板。",
+        "template": "policies/policy-impeccable-ui-foundations.md"
+      },
+      "sources": [
+        {
+          "id": "impeccable-core",
+          "name": "Impeccable",
+          "url": "https://github.com/pbakaus/impeccable/tree/main/.codex/skills",
+          "description": "覆盖设计上下文采集、界面实现、版式、布局、文案、适配与最终打磨。",
+          "selectedSkills": [
+            "teach-impeccable",
+            "frontend-design",
+            "typeset",
+            "arrange",
+            "colorize",
+            "clarify",
+            "adapt",
+            "harden",
+            "polish",
+            "critique"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "impeccable-ui-advanced",
+      "autoInstall": true,
+      "name": "Impeccable UI Advanced",
+      "description": "面向高审美要求的 Web 界面增强 Kit，补充动效、品牌表达、设计系统提炼、性能优化与高级交互表现。",
+      "policy": {
+        "name": "Impeccable UI Advanced",
+        "description": "适用于高表达力界面增强工作的轻量 AGENTS.md 模板。",
+        "template": "policies/policy-impeccable-ui-advanced.md"
+      },
+      "sources": [
+        {
+          "id": "impeccable-advanced",
+          "name": "Impeccable",
+          "url": "https://github.com/pbakaus/impeccable/tree/main/.codex/skills",
+          "description": "覆盖动效、设计强化、系统提炼、性能与高级交互表现。",
+          "selectedSkills": [
+            "animate",
+            "delight",
+            "bolder",
+            "quieter",
+            "distill",
+            "normalize",
+            "extract",
+            "onboard",
+            "optimize",
+            "overdrive",
+            "audit"
+          ]
+        }
+      ]
+    },
+    {
       "id": "python-service-api",
+      "autoInstall": true,
       "name": "Python Service API",
       "description": "面向 Python 服务、API、调试和安全检查的 Kit。",
       "policy": {
@@ -161,6 +227,7 @@
     },
     {
       "id": "langchain-langgraph-apps",
+      "autoInstall": true,
       "name": "LangChain LangGraph Apps",
       "description": "面向 LangChain / LangGraph 应用开发、RAG、持久化与 agent orchestration 的 Kit。",
       "policy": {
@@ -188,244 +255,6 @@
           "name": "Anthropic Skills",
           "url": "https://github.com/anthropics/skills/tree/main/skills",
           "description": "补充 MCP 构建与工具扩展能力。",
-          "selectedSkills": [
-            "mcp-builder"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "hf-ml-training-evaluation",
-      "name": "HF ML Training Evaluation",
-      "description": "面向 Hugging Face 训练、评测、数据集与 demo 的 Kit。",
-      "policy": {
-        "name": "HF ML Training Evaluation",
-        "description": "适用于 Hugging Face / ML 训练评测工作流的 AGENTS.md 模板。",
-        "template": "policies/policy-hf-ml.md"
-      },
-      "sources": [
-        {
-          "id": "huggingface-ml",
-          "name": "Hugging Face Skills",
-          "url": "https://github.com/huggingface/skills/tree/main/skills",
-          "description": "覆盖数据集、训练、评测、实验追踪和 Gradio demo。",
-          "selectedSkills": [
-            "hugging-face-datasets",
-            "hugging-face-model-trainer",
-            "hugging-face-evaluation",
-            "hugging-face-trackio",
-            "huggingface-gradio"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "literature-review-scientific-writing",
-      "name": "Literature Review Scientific Writing",
-      "description": "面向文献综述、科研写作、引用管理和同行评审的 Kit。",
-      "policy": {
-        "name": "Literature Review Scientific Writing",
-        "description": "适用于文献综述与科研写作的 AGENTS.md 模板。",
-        "template": "policies/policy-literature-review.md"
-      },
-      "sources": [
-        {
-          "id": "k-dense-literature",
-          "name": "K-Dense Scientific Skills",
-          "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills",
-          "description": "覆盖文献检索、引用管理和同行评审。",
-          "selectedSkills": [
-            "literature-review",
-            "pubmed-database",
-            "arxiv-database",
-            "citation-management",
-            "peer-review"
-          ]
-        },
-        {
-          "id": "anthropic-writing",
-          "name": "Anthropic Skills",
-          "url": "https://github.com/anthropics/skills/tree/main/skills",
-          "description": "补充文档协作能力。",
-          "selectedSkills": [
-            "doc-coauthoring"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "scientific-discovery-bioinformatics",
-      "name": "Scientific Discovery Bioinformatics",
-      "description": "面向科研、生信、单细胞、药物发现与计算化学的 Kit。",
-      "policy": {
-        "name": "Scientific Discovery Bioinformatics",
-        "description": "适用于科研、生信与药物发现工作流的 AGENTS.md 模板。",
-        "template": "policies/policy-scientific-discovery.md"
-      },
-      "sources": [
-        {
-          "id": "k-dense-discovery",
-          "name": "K-Dense Scientific Skills",
-          "url": "https://github.com/K-Dense-AI/claude-scientific-skills/tree/main/scientific-skills",
-          "description": "覆盖单细胞分析、生信数据库和药化工具。",
-          "selectedSkills": [
-            "anndata",
-            "scanpy",
-            "cellxgene-census",
-            "chembl-database",
-            "bindingdb-database",
-            "rdkit",
-            "uniprot-database"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "security-audit-vulnerability-detection",
-      "name": "Security Audit Vulnerability Detection",
-      "description": "面向安全审计、静态分析、供应链风险与威胁建模的 Kit。",
-      "policy": {
-        "name": "Security Audit Vulnerability Detection",
-        "description": "适用于安全审计与漏洞检测的 AGENTS.md 模板。",
-        "template": "policies/policy-security-audit.md"
-      },
-      "sources": [
-        {
-          "id": "trailofbits-static-analysis",
-          "name": "Trail of Bits Static Analysis",
-          "url": "https://github.com/trailofbits/skills/tree/main/plugins/static-analysis/skills",
-          "description": "覆盖 CodeQL 和 Semgrep 等静态分析能力。",
-          "selectedSkills": [
-            "codeql",
-            "semgrep"
-          ]
-        },
-        {
-          "id": "trailofbits-supply-chain",
-          "name": "Trail of Bits Supply Chain",
-          "url": "https://github.com/trailofbits/skills/tree/main/plugins/supply-chain-risk-auditor/skills",
-          "description": "覆盖供应链风险分析。",
-          "selectedSkills": [
-            "supply-chain-risk-auditor"
-          ]
-        },
-        {
-          "id": "trailofbits-defaults",
-          "name": "Trail of Bits Defaults",
-          "url": "https://github.com/trailofbits/skills/tree/main/plugins/insecure-defaults/skills",
-          "description": "检查不安全默认配置。",
-          "selectedSkills": [
-            "insecure-defaults"
-          ]
-        },
-        {
-          "id": "openai-security-curated",
-          "name": "OpenAI Curated Security Skills",
-          "url": "https://github.com/openai/skills/tree/main/skills/.curated",
-          "description": "补充威胁建模与安全最佳实践。",
-          "selectedSkills": [
-            "security-best-practices",
-            "security-threat-model"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "release-ci-automation",
-      "name": "Release CI Automation",
-      "description": "面向发布、CI、代码评审反馈处理与交付收尾的 Kit。",
-      "policy": {
-        "name": "Release CI Automation",
-        "description": "适用于发布、CI 与自动化维护工作的 AGENTS.md 模板。",
-        "template": "policies/policy-release-ci.md"
-      },
-      "sources": [
-        {
-          "id": "openai-ci-curated",
-          "name": "OpenAI Curated CI Skills",
-          "url": "https://github.com/openai/skills/tree/main/skills/.curated",
-          "description": "覆盖 GitHub review comment 和 CI 故障修复。",
-          "selectedSkills": [
-            "gh-address-comments",
-            "gh-fix-ci"
-          ]
-        },
-        {
-          "id": "superpowers-release-flow",
-          "name": "Superpowers Core",
-          "url": "https://github.com/obra/superpowers/tree/main/skills",
-          "description": "补充发布收尾、验证与代码评审工作流。",
-          "selectedSkills": [
-            "finishing-a-development-branch",
-            "verification-before-completion",
-            "requesting-code-review"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "cloudflare-serverless-edge",
-      "name": "Cloudflare Serverless Edge",
-      "description": "面向 Cloudflare、Workers、Durable Objects 和边缘 AI agent 的 Kit。",
-      "policy": {
-        "name": "Cloudflare Serverless Edge",
-        "description": "适用于 Cloudflare / Serverless / Edge 工作流的 AGENTS.md 模板。",
-        "template": "policies/policy-cloudflare-edge.md"
-      },
-      "sources": [
-        {
-          "id": "cloudflare-skills",
-          "name": "Cloudflare Skills",
-          "url": "https://github.com/cloudflare/skills/tree/main/skills",
-          "description": "覆盖 Workers、Wrangler、Durable Objects、AI agents 与 MCP。",
-          "selectedSkills": [
-            "cloudflare",
-            "workers-best-practices",
-            "wrangler",
-            "durable-objects",
-            "building-ai-agent-on-cloudflare",
-            "building-mcp-server-on-cloudflare"
-          ]
-        },
-        {
-          "id": "openai-cloudflare-deploy",
-          "name": "OpenAI Cloudflare Deploy",
-          "url": "https://github.com/openai/skills/tree/main/skills/.curated",
-          "description": "补充 Cloudflare 部署能力。",
-          "selectedSkills": [
-            "cloudflare-deploy"
-          ]
-        }
-      ]
-    },
-    {
-      "id": "azure-cloud-development",
-      "name": "Azure Cloud Development",
-      "description": "面向 Azure Python 云应用、身份、搜索、消息和项目编排的 Kit。",
-      "policy": {
-        "name": "Azure Cloud Development",
-        "description": "适用于 Azure 云开发工作流的 AGENTS.md 模板。",
-        "template": "policies/policy-azure-cloud.md"
-      },
-      "sources": [
-        {
-          "id": "microsoft-azure-python",
-          "name": "Microsoft Skills Azure Python",
-          "url": "https://github.com/microsoft/skills/tree/main/.github/plugins/azure-sdk-python/skills",
-          "description": "覆盖 Azure 项目、身份、搜索、消息和 Python API 入口。",
-          "selectedSkills": [
-            "azure-ai-projects-py",
-            "azure-identity-py",
-            "azure-search-documents-py",
-            "azure-servicebus-py",
-            "fastapi-router-py"
-          ]
-        },
-        {
-          "id": "anthropic-azure-mcp",
-          "name": "Anthropic Skills",
-          "url": "https://github.com/anthropics/skills/tree/main/skills",
-          "description": "补充 MCP 和工具集成能力。",
           "selectedSkills": [
             "mcp-builder"
           ]

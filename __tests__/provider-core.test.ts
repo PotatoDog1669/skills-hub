@@ -211,7 +211,7 @@ requires_openai_auth = true
     const authSnapshotPath = path.join(
       tempHome,
       '.skills-hub',
-      'provider-auth',
+      'provider-snapshots',
       'codex',
       capturedProvider.id,
       'auth.json'
@@ -222,6 +222,17 @@ requires_openai_auth = true
       auth_mode: 'chatgpt',
       tokens: { account_id: 'acc-1' },
     })
+
+    const configSnapshotPath = path.join(
+      tempHome,
+      '.skills-hub',
+      'provider-snapshots',
+      'codex',
+      capturedProvider.id,
+      'config.toml'
+    )
+    const configSnapshot = await fs.readFile(configSnapshotPath, 'utf-8')
+    expect(configSnapshot).toContain('api_base_url = "https://example.com/v1"')
   })
 
   it('creates empty auth slot when capturing duplicate codex official account', async () => {
@@ -271,7 +282,7 @@ requires_openai_auth = true
     const authSnapshotPath = path.join(
       tempHome,
       '.skills-hub',
-      'provider-auth',
+      'provider-snapshots',
       'codex',
       duplicatedProvider.id,
       'auth.json'
@@ -283,7 +294,7 @@ requires_openai_auth = true
     })
   })
 
-  it('syncs codex official auth snapshot per provider when switching', async () => {
+  it('syncs codex auth and config snapshots per provider when switching', async () => {
     const codexDir = path.join(tempHome, '.codex')
     await fs.ensureDir(codexDir)
     await fs.writeJson(path.join(codexDir, 'auth.json'), {
@@ -321,6 +332,11 @@ requires_openai_auth = true
       auth_mode: 'chatgpt',
       tokens: { account_id: 'acc-b' },
     })
+    await fs.writeFile(
+      path.join(codexDir, 'config.toml'),
+      'model = "gpt-5.4"\napi_base_url = "https://chatgpt.com/backend-api/codex"\n',
+      'utf-8'
+    )
 
     // Switch back to A to backfill B's latest login snapshot.
     await core.switchProvider({ appType: 'codex', providerId: officialAProvider.id })
@@ -332,6 +348,9 @@ requires_openai_auth = true
       auth_mode: 'chatgpt',
       tokens: { account_id: 'acc-b' },
     })
+
+    const configAfter = await fs.readFile(path.join(codexDir, 'config.toml'), 'utf-8')
+    expect(configAfter).toContain('api_base_url = "https://chatgpt.com/backend-api/codex"')
   })
 
   it('creates and applies universal provider to multiple apps', async () => {
